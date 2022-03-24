@@ -6,15 +6,48 @@ from astropy.cosmology import FlatLambdaCDM
 cosmo_astropy = FlatLambdaCDM(H0=71.0, Om0=0.265, Ob0 = 0.0448)
 
 def theta(ra1,dec1, ra2, dec2):
+    r"""
+    Attributes:
+    -----------
+    ra1, dec1: float, float
+        position of object 1
+    ra2, dec2: float, float
+        position of object 2
+    Returs:
+    -------
+    t: float
+        angular distance between 1 & 2
+    """
     t = np.sqrt((ra1 - ra2)**2*np.cos(dec1*np.pi/180)**2 + (dec1 - dec2)**2)*(np.pi/180)
     return t
 
-def match_nearest_neghbor(base_catalog = 1, target_catalog =1, label_base = '', label_target = '', id_base = '', id_target = ''):
-    r"""match to nearest neighbor"""
-    ml = {'z_mean' : [], 'richness' : [], 'richness_err' : [], 'logm200' : [],'logm200_err' : [], 'n' : []}
+def match_nearest_neghbor(base_catalog = None, target_catalog = None, 
+                          label_base = 'id', label_target = 'id', id_base = 'id', id_target = 'id'):
+    r"""match to nearest neighbor
+    Attributes:
+    -----------
+    base catalog: Table
+        catalog to be matched
+    target_catalog: Table
+        target catalog
+    label_base: str
+        label for base catalog
+    label_target: str
+        label for target catalog
+    id_base: str
+        id for identifying base objects
+    id_target: str
+        id for identifying target objects
+    Returns:
+    --------
+    dat_tot: Table
+        matched catalog
+    """
     dat_tot = Table()
-    base_SkyCoord = SkyCoord(ra=base_catalog['ra']*un.deg, dec=base_catalog['dec']*un.deg, distance=cosmo_astropy.angular_diameter_distance(base_catalog['redshift']))
-    target_SkyCoord = SkyCoord(ra=target_catalog['ra']*un.deg, dec=target_catalog['dec']*un.deg, distance=cosmo_astropy.angular_diameter_distance(target_catalog['redshift']))
+    base_SkyCoord = SkyCoord(ra=base_catalog['ra']*un.deg, dec=base_catalog['dec']*un.deg, 
+                             distance=cosmo_astropy.angular_diameter_distance(base_catalog['redshift']))
+    target_SkyCoord = SkyCoord(ra=target_catalog['ra']*un.deg, dec=target_catalog['dec']*un.deg, 
+                               distance=cosmo_astropy.angular_diameter_distance(target_catalog['redshift']))
     idx, sep2d, sep3d = match_coordinates_sky(base_SkyCoord,target_SkyCoord, nthneighbor=1,storekdtree='kdtree_3d')
     base_cut = base_catalog
     target_cut = target_catalog[idx]
@@ -26,19 +59,50 @@ def match_nearest_neghbor(base_catalog = 1, target_catalog =1, label_base = '', 
         dat_tot[name_match] = target_cut[name]
     return dat_tot
 
-def selection_cut(match = 1, label_base = '', label_target = ''):
-    r"""apply selection cut"""
+def selection_cut(match = None, label_base = 'label', label_target = 'label'):
+    r"""apply selection cut
+    Attributes:
+    -----------
+    match: Table
+        matched catalog
+    label_base: str
+        label for base catalog
+    label_target: str
+        label for target catalog
+    Returns:
+    --------
+    matched catalog with selection cut
+    """
     angsep = theta(match['ra' + label_base],match['dec' + label_base], match['ra' + label_target], match['dec' + label_target])
-    rsep = angsep*cosmo_astropy.angular_diameter_distance(match['redshift' + label_base]).value
+    rsep = angsep * cosmo_astropy.angular_diameter_distance(match['redshift' + label_base]).value
     match['distance'] = rsep
+    #redshift selection
     z_selection = abs(match['redshift' + label_base] - match['redshift' + label_target]) < 0.05
+    #radial selection
     RLambda = ((match['richness'+label_base]/100)**0.2)/0.71
     r_selection = (match['distance'] < RLambda)
     selection = z_selection * r_selection
     match['R_lambda'] = RLambda
     return match[selection]
 
-def find_repetition(match = 1, label_base = '', label_target = '', id_base = '', id_target = ''):
+def find_repetition(match = 1, label_base = 'label', label_target = 'label', id_base = 'id', id_target = 'id'):
+    r"""find repetition
+    Attributes:
+    -----------
+    match: Table
+        matched catalog
+    label_base: str
+        label for base catalog
+    label_target: str
+        label for target catalog
+    id_base: str
+        id for identifying base objects
+    id_target: str
+        id for identifying target objects
+    Returns:
+    --------
+    matched catalog with removed repetition
+    """
     r"""check if repeated matchs"""
     choose_base_id = []
     list_unique_target_id = np.unique(match[id_target + label_target])
@@ -54,7 +118,22 @@ def find_repetition(match = 1, label_base = '', label_target = '', id_base = '',
     mask = np.isin(ide, np.array(choose_base_id))
     return match[mask]
 
-def make_binned(match = 1, Z_bin = '', Richness_bin = ''):
+def make_binned(match = 1, Z_bin = None, Richness_bin = None):
+    r"""make binned mass-richness relation"""
+    r"""
+    Attributes:
+    -----------
+    match: Table
+        matched catalog
+    Z_bin: array
+        redshift bins
+    Richness_bin: array
+        richness bins
+    Returns:
+    --------
+    ml: dict
+        binned catalog
+    """
     ml = {'z_mean' : [], 'logrichness' : [], 'richness_err' : [], 'm200' : [],'m200_err' : [], 'n_stack' : [], 
           'logrichness_in_bin':[], 'redshift_in_bin':[],'M200c_in_bin':[], 'logrichness_err_in_bin':[], 'redshift_err_in_bin':[]}
     for z_bin in Z_bin:
