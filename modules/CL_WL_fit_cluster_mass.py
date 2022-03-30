@@ -184,17 +184,28 @@ class HaloMass_fromStackedProfile():
     
         if self.use_cM_relation == False:
             def chi2(logm200, c200): return -2 * lnL_fit(logm200, c200)
-            minuit = Minuit(chi2, logm200 = 14, c200 = 4, limit_c200 = (c_min, c_max), 
-                 error_logm200 = .01, error_c200 = .01,
-                limit_logm200 = (logm_min, logm_max), errordef = 1)
-            minuit.migrad(),minuit.hesse(),minuit.minos()
+            minuit = Minuit(chi2, logm200 = 14, c200 = 4)
+            minuit.limits=[(logm_min, logm_max),(c_min, c_max)]
+            minuit.errordef = 1
+            minuit.errors=[0.01,0.01]
+            
+            minuit.migrad()
+            minuit.hesse()
+            minuit.minos()
             chi2_val = minuit.fval/(len(self.mask_R[self.mask_R == True]) - 2)
         else: 
             def chi2(logm200): return -2 * lnL_fit(logm200)
-            minuit = Minuit(chi2, logm200 = 14, error_logm200 = .01,
-                            limit_logm200 = (logm_min, logm_max), errordef = 1)
-            minuit.migrad(),minuit.hesse(),minuit.minos()
-            chi2_val = minuit.fval/(len(self.mask_R[self.mask_R == True]) - 1)
+            minuit = Minuit(chi2, logm200 = 14)
+            minuit = Minuit(chi2, logm200 = 14)
+            minuit.limits=[(logm_min, logm_max)]
+            minuit.errordef = 1
+            minuit.errors=[0.01]
+            
+            minuit.migrad()
+            minuit.hesse()
+            minuit.minos()
+            chi2_val = minuit.fval/(len(self.mask_R[self.mask_R == True]) - 1)        
+        
         logm_fit = minuit.values['logm200']
         logm_fit_err = minuit.errors['logm200']
         if self.cModel == None:
