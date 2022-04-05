@@ -221,10 +221,12 @@ class HaloMass_fromStackedProfile():
             chi2_val = minuit.fval/(len(self.mask_R[self.mask_R == True]) - 1)        
         
         logm_fit = minuit.values['logm200']
-        logm_fit_err = minuit.errors['logm200']
+        logm_fit_err = (minuit.merrors['logm200'].upper - minuit.merrors['logm200'].lower)/2
+        #logm_fit_err = minuit.errors['logm200']
         if self.cModel == None:
             c_fit = minuit.values['c200']
-            c_fit_err = minuit.errors['c200']
+            c_fit_err = (minuit.merrors['c200'].upper - minuit.merrors['c200'].lower)/2
+            #c_fit_err = minuit.errors['c200']
         else: 
             c_fit = self.c200c(logm_fit)
             c_fit_err = 0
@@ -233,7 +235,7 @@ class HaloMass_fromStackedProfile():
     def fit_with_mcmc(self, lnL_fit, logm_min, logm_max, c_min, c_max):
         
         nwalkers = 100
-        nstep = 100
+        nstep = 200
         pos_logm = np.random.randn(nwalkers) * 0.1 + 14
         pos_c = np.random.randn(nwalkers) * 0.00001 + 4
         mask_pos = (logm_max > pos_logm)*(pos_logm > logm_min)*(c_max > pos_c)*(pos_c > c_min)
@@ -263,13 +265,13 @@ class HaloMass_fromStackedProfile():
             
         sampler = emcee.EnsembleSampler(nwalkers, ndim, lnL_fit_mcmc)
         sampler.run_mcmc(pos, nstep, progress=False);
-        flat_samples = sampler.get_chain(discard=1, thin=15, flat=True)
+        flat_samples = sampler.get_chain(discard=1, thin=3, flat=True)
         mean = np.mean(flat_samples, axis = 0)
         err = np.std(flat_samples, axis = 0)
         if self.use_cM_relation == True:
             return mean[0], err[0], self.c200c(mean), 0, 1
         else:
-            return mean[0], err[0], mean[1], err[1], 1
+            return mean[0], err[0], mean[1], err[1], 1, flat_samples
         
     def fit(self, logm_min, logm_max, c_min, c_max, method='minuit'):
         r"""fit the halo mass (and concentration given a method)
@@ -290,11 +292,12 @@ class HaloMass_fromStackedProfile():
         
         if method == 'minuit':
             res = self.fit_with_minuit(lnL_fit, logm_min, logm_max, c_min, c_max)
+            logm_fit, logm_fit_err, c_fit, c_fit_err, chi2_val = res
+            chain = 1
         if method == 'mcmc':
             res = self.fit_with_mcmc(lnL_fit, logm_min, logm_max, c_min, c_max)
-        logm_fit, logm_fit_err, c_fit, c_fit_err, chi2_val = res
-        print(res)
-        
+            logm_fit, logm_fit_err, c_fit, c_fit_err, chi2_val, chain = res
+
         moo_fit = moo
         moo_fit.set_mass(10**logm_fit), moo_fit.set_concentration(c_fit)
         #compute model:
@@ -305,14 +308,14 @@ class HaloMass_fromStackedProfile():
             ds_2h_term =  self.ds_2h_term(halobias_fit)
         else: ds_2h_term = 0
         dat_to_save =  [self.mask_R, chi2_val, logm_fit, logm_fit_err, c_fit, c_fit_err, 
-                  ds_1h_term, ds_2h_term, self.R]
+                  ds_1h_term, ds_2h_term, self.R, chain]
         return dat_to_save
 
 def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagonal = True,
                         a = None, b = None, rmax = None, 
                         two_halo_term = False, fix_c = False,halo_model = 'nfw', mc_relation='Diemer15', method='minuit'):
     fit_data_name = ['mask','chi2ndof', 'logm200_w','logm200_w_err', 
-                     'c_w', 'c_w_err','1h_term', '2h_term','radius_model']
+                     'c_w', 'c_w_err','1h_term', '2h_term','radius_model', 'chain']
     data_to_save = fit_data_name + profile.colnames
     fit_data_name_tot = data_to_save
     tab = {name : [] for name in fit_data_name_tot}
