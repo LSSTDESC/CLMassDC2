@@ -38,7 +38,6 @@ moo_nfw.set_cosmo(cosmo_clmm)
 #moo_einasto.set_cosmo(cosmo_clmm)
 #moo_hernquist = clmm.Modeling(massdef = 'critical', delta_mdef = 200, halo_profile_model = 'hernquist')
 #moo_hernquist.set_cosmo(cosmo_clmm)
-moo = moo_nfw
   
 class HaloMass_fromStackedProfile():
 
@@ -70,7 +69,7 @@ class HaloMass_fromStackedProfile():
             use 2h term or not
         """
         self.halo_model = halo_model
-        #use mass-concentration relation
+        self.moo = clmm.Modeling(massdef = 'critical', delta_mdef = 200, halo_profile_model = halo_model)
         self.use_cM_relation = use_cM_relation
         if self.use_cM_relation == False: 
             self.cModel = None
@@ -153,6 +152,7 @@ class HaloMass_fromStackedProfile():
 
     def c200c_model(self, name='Diemer15'):
         r"""
+        mass-concentration relation for nfw profile
         Attributes:
         -----------
         name: str
@@ -181,8 +181,8 @@ class HaloMass_fromStackedProfile():
         --------
         lnL: log of likelihood
         """
-        moo.set_mass(10**logm200), moo.set_concentration(c200)
-        y_predict = self.ds_1h_term(moo, self.R)
+        self.moo.set_mass(10**logm200), self.moo.set_concentration(c200)
+        y_predict = self.ds_1h_term(self.moo, self.R)
         if self.use_two_halo_term == True:
             M200m, c200m = self.m200m_c200m_from_logm200c_c200c(10**logm200, c200, self.cluster_z)
             halobias_val = self.hbias(np.log10(M200m))
@@ -298,10 +298,9 @@ class HaloMass_fromStackedProfile():
             res = self.fit_with_mcmc(lnL_fit, logm_min, logm_max, c_min, c_max)
             logm_fit, logm_fit_err, c_fit, c_fit_err, chi2_val, chain = res
 
-        moo_fit = moo
-        moo_fit.set_mass(10**logm_fit), moo_fit.set_concentration(c_fit)
+        self.moo.set_mass(10**logm_fit), self.moo.set_concentration(c_fit)
         #compute model:
-        ds_1h_term = self.ds_1h_term(moo_fit, self.R)
+        ds_1h_term = self.ds_1h_term(self.moo, self.R)
         if self.use_two_halo_term:
             M200m, c200m = self.m200m_c200m_from_logm200c_c200c(10**logm_fit, c_fit, self.cluster_z)
             halobias_fit = self.hbias(np.log10(M200m))
@@ -335,162 +334,3 @@ def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagona
         for q, name in enumerate(fit_data_name_tot):
             tab[name].append(dat_save[q])
     return Table(tab)
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-r"""
-def chi2_full(logm200, c200, cluster_z, 
-         data_R, data_DS, data_cov_DS, data_inv_cov_DS, mask_data_R,
-         fix_c, two_halo_term, ds_nobias, is_covariance_diagonal, mc_model = None):
-            if fix_c:
-                c200 = mc_model._concentration(cosmo_ccl, 10**logm200, 1./(1. + cluster_z))
-            moo.set_mass(10**logm200), moo.set_concentration(c200)
-            #1h term
-            y_predict = np.array([moo.eval_excess_surface_density(data_R[i], cluster_z) for i in range(len(data_R))])
-            #2h term
-            if two_halo_term == True:
-                M200m, c200m = m200m_c200m_from_logm200c_c200c(10**logm200, c200, cluster_z)
-                hbais = halobais.get_halo_bias(cosmo_ccl, M200m, 1./(1.+cluster_z), mdef_other = definition)
-                y_predict = y_predict + hbais * ds_nobias
-            d = (y_predict - data_DS)
-            d = np.array([d[i] if mask_data_R[i] == True else 0 for i in range(len(mask_data_R))])
-            if is_covariance_diagonal:
-                m_2lnL = np.sum((d[mask_data_R]/np.sqrt(data_cov_DS.diagonal()[mask_data_R]))**2)
-            else: m_2lnL = np.sum(d*data_inv_cov_DS.dot(d))
-            return m_2lnL
-        
-def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagonal = True,
-                        a = None, b = None, rmax = None, 
-                        two_halo_term = False, fix_c = False,halo_model = 'nfw', mc_relation='Diemer15'):
-    
-
-    Attributes:
-    -----------
-    profile: Table
-        stacked profile table
-    covariance: Table
-        stacked coavriance table
-    is_covariance_diagonal: boolean
-        use diagonal_covariance or not
-    a: float
-        rmin = a + b*z
-    b: float
-        rmin = a + b*z
-    rmax: float
-        maximum radius
-    two_halo_term: boolean
-        use 2h term or not
-    fix_c: boolean
-        fic concentration to m-c relation of not
-    halo_model: str
-        halo model
-    mc_relation: str
-        name of mass-concentration used
-    Returns:
-    --------
-    fit: Table
-
-    fit_data_name = ['mask','chi2ndof', 'logm200_w','logm200_w_err', 
-                     'c_w', 'c_w_err','1h_term', '2h_term','radius_model']
-    data_to_save = fit_data_name + profile.colnames
-    fit_data_name_tot = data_to_save
-    tab = {name : [] for name in fit_data_name_tot}
-    if fix_c == True: 
-        c200c_from_logm200c = c200c_model(name=mc_relation)
-    else: c200c_from_logm200c = None
-    for j, p in enumerate(profile):
-        infos_cov = covariance[j]
-        cluster_z, ds_obs, cov_ds, R = p['z_mean'], p['gt'], infos_cov['cov_t'], p['radius']
-        inv_cov_ds = np.linalg.inv(cov_ds)
-        if two_halo_term == True:
-            Pk = ccl.linear_matter_power(cosmo_ccl, kk, 1/(1+cluster_z))
-            ds_nobias = twoh.ds_two_halo_term_unbaised(R, cluster_z, cosmo_ccl, kk, Pk)
-        else: ds_nobias = None
-        rmin, rmax = max(1,a*cluster_z + b) , rmax
-        mask = (R > rmin)*(R < rmax)
-        
-        def chi2(logm200, c200): 
-            m_2lnL =  chi2_full(logm200, c200, cluster_z, 
-                             R, ds_obs, cov_ds, inv_cov_ds, mask,
-                             fix_c, two_halo_term, ds_nobias, is_covariance_diagonal, 
-                            mc_model = c200c_from_logm200c)
-            return m_2lnL
-        
-        minuit = Minuit(chi2, logm200 = 14, c200 = 4, limit_c200 = (0.01,20), 
-                    fix_c200 = fix_c, error_logm200 = .01, error_c200 = .01,
-                   limit_logm200 = (12,16), errordef = 1)
-
-        minuit.migrad(),minuit.hesse(),minuit.minos()
-        chi2 = minuit.fval/(len(mask[mask == True]) - 1)
-        logm_fit = minuit.values['logm200']
-        logm_fit_err = minuit.errors['logm200']
-        c_fit = minuit.values['c200']
-        c_fit_err = minuit.errors['c200']
-
-        if fix_c == True:
-            c_fit = c200c_from_logm200c._concentration(cosmo_ccl, 10**logm_fit, 1./(1. + cluster_z))
-            c_fit_err = 0
-            
-        #1h term best fit
-        moo.set_mass(10**logm_fit), moo.set_concentration(c_fit)
-        ds_1h_term = np.array([moo.eval_excess_surface_density(R[i], cluster_z) for i in range(len(R))])
-        #2h term best fit
-        if two_halo_term == True:
-            M200m, c200m = m200m_c200m_from_logm200c_c200c(10**logm_fit, c_fit, cluster_z)
-            hbais = halobais.get_halo_bias(cosmo_ccl, M200m, 1./(1.+cluster_z), mdef_other = definition)
-            ds_2h_term = hbais * ds_nobias
-        else : ds_2h_term = None
-        dat_col_WL = [mask, chi2, logm_fit, logm_fit_err, c_fit, c_fit_err, 
-                  ds_1h_term, ds_2h_term, R]
-        dat_save = dat_col_WL + [p[s] for s, name in enumerate(profile.colnames)]
-        for q, name in enumerate(fit_data_name_tot):
-            tab[name].append(dat_save[q])
-    return Table(tab)
-"""
