@@ -2,6 +2,8 @@ import sys
 import numpy as np
 import iminuit
 from iminuit import Minuit
+import os
+os.environ['CLMM_MODELING_BACKEND'] = 'nc'
 import clmm
 from clmm import Cosmology
 from astropy.table import Table, QTable, hstack, vstack
@@ -191,7 +193,8 @@ class HaloMass_fromStackedProfile():
         delta_cut = np.array([delta[s] if is_in == True else 0 for s, is_in in enumerate(self.mask_R)])
         if self.is_covariance_diagonal:
             lnL_val = -.5 * np.sum((delta[self.mask_R]/np.sqrt(self.cov_ds.diagonal()[self.mask_R]))**2)
-        else: lnL_val = -.5 * np.sum( delta_cut * self.inv_cov_ds.dot( delta_cut ) )
+        else: 
+            lnL_val = -.5 * np.sum( delta_cut * self.inv_cov_ds.dot( delta_cut ) )
         return lnL_val
     
     def fit_with_minuit(self, lnL_fit, logm_min, logm_max, c_min, c_max):
@@ -325,7 +328,7 @@ def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagona
         cov = covariance[k]['cov_t']
         gt = p['gt']
         Halo = HaloMass_fromStackedProfile(cluster_z, radius, gt, cov)
-        Halo.set_halo_model(halo_model = 'nfw', use_cM_relation = fix_c, cM_relation = mc_relation, use_two_halo_term = two_halo_term)
+        Halo.set_halo_model(halo_model = halo_model, use_cM_relation = fix_c, cM_relation = mc_relation, use_two_halo_term = two_halo_term)
         Halo.set_radial_range(a, b, rmax)
         Halo.is_covariance_diagonal(is_covariance_diagonal)
         logm_min, logm_max, c_min, c_max = 11, 17, .01, 20

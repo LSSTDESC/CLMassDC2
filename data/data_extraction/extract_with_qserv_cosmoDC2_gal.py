@@ -31,7 +31,7 @@ def extract(n):
     index = lens_catalog[n][run.index_name]
     name = where_to_save + save_key + str(index)+'.pkl'
     if name in glob.glob
-    da = cosmo.eval_da(z_halo)
+    da = cosmo.eval_da(z)
     theta_max = ((21./da)) * (180./np.pi)
     query = "SELECT data.coord_ra as ra, data.coord_dec as dec, data.redshift as z_cosmodc2, "
     query += "data.mag_i, data.mag_r, data.mag_y, data.galaxy_id as dc2_galaxy_id, "
