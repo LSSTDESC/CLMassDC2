@@ -19,6 +19,7 @@ def neigboring_tracts(ra_deg = 1, dec_deg = 1):
     idx, d2d, d3d = astropy.coordinates.match_coordinates_sky(coord, tract_coord, nthneighbor=1, storekdtree='kdtree_sky')
     t = tract_list[idx]
     arr, index = np.unique(t['tract_id'], return_index = True)
-    t = t[index]
-    return t
+    #print(index)
+    #t = t[index]
+    return arr
 
