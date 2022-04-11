@@ -32,17 +32,9 @@ halobias = ccl.halos.hbias.HaloBiasTinker10(cosmo_ccl, mass_def=definition, mass
 
 #ccl power spectrum
 kk = np.logspace(-5,5 ,100000)
-
-#clmm 1h-term modelling
-moo_nfw = clmm.Modeling(massdef = 'critical', delta_mdef = 200, halo_profile_model = 'nfw')
-moo_nfw.set_cosmo(cosmo_clmm)
-#moo_einasto = clmm.Modeling(massdef = 'critical', delta_mdef = 200, halo_profile_model = 'einasto')
-#moo_einasto.set_cosmo(cosmo_clmm)
-#moo_hernquist = clmm.Modeling(massdef = 'critical', delta_mdef = 200, halo_profile_model = 'hernquist')
-#moo_hernquist.set_cosmo(cosmo_clmm)
   
 class HaloMass_fromStackedProfile():
-
+    r"""a class for the estimation of weak lensing mass from shear profile"""
     def __init__(self, cluster_z, radius, gt, covariance):
         r"""
         Attributes:
@@ -71,7 +63,9 @@ class HaloMass_fromStackedProfile():
             use 2h term or not
         """
         self.halo_model = halo_model
+        #clmm 1h-term
         self.moo = clmm.Modeling(massdef = 'critical', delta_mdef = 200, halo_profile_model = halo_model)
+        self.moo.set_cosmo(cosmo_clmm)
         self.use_cM_relation = use_cM_relation
         if self.use_cM_relation == False: 
             self.cModel = None
@@ -82,10 +76,10 @@ class HaloMass_fromStackedProfile():
             def c200c(logm200c): return np.interp(logm200c, logm_array, c_array)
             self.c200c = c200c
             
-        #use two-halo term
+        #two-halo term
         self.use_two_halo_term = use_two_halo_term
-        if self.use_two_halo_term == False:
-            self.ds_nobias = None
+        if self.use_two_halo_term==False:
+            self.ds_nobias=None
         else: 
             Pk = ccl.linear_matter_power(cosmo_ccl, kk, 1/(1+self.cluster_z))
             self.ds_nobias = twoh.ds_two_halo_term_unbaised(self.R, self.cluster_z, cosmo_ccl, kk, Pk)
@@ -121,9 +115,6 @@ class HaloMass_fromStackedProfile():
         
     def ds_1h_term(self, moo, R):
         res = []
-        #for r in R:
-            #res.append(moo.eval_excess_surface_density(r, self.cluster_z))
-        #return np.array(res)
         return moo.eval_excess_surface_density(R, self.cluster_z)
     def ds_2h_term(self, halobias):
         return halobias * self.ds_nobias
@@ -198,7 +189,25 @@ class HaloMass_fromStackedProfile():
         return lnL_val
     
     def fit_with_minuit(self, lnL_fit, logm_min, logm_max, c_min, c_max):
-    
+        r"""
+        fit cluster mass and concentration with minuit
+        Attributes:
+        -----------
+        lnL_fit: fct
+            likelihood to be used
+        logm_min, logm_max: float, float
+            min and max logm
+        c_min, c_max: float, float
+            min and max cocnentration
+        Returns:
+        --------
+        logm_fit, logm_fit_err: float, float
+            best fit logmass and error
+        c_fit, c_fit_err: float, float
+            best fit concentration and error
+        chi2_val: float
+            chi2/ndof value
+        """
         if self.use_cM_relation == False:
             def chi2(logm200, c200): return -2 * lnL_fit(logm200, c200)
             minuit = Minuit(chi2, logm200 = 14, c200 = 4)
@@ -225,18 +234,36 @@ class HaloMass_fromStackedProfile():
         
         logm_fit = minuit.values['logm200']
         logm_fit_err = (minuit.merrors['logm200'].upper - minuit.merrors['logm200'].lower)/2
-        #logm_fit_err = minuit.errors['logm200']
         if self.cModel == None:
             c_fit = minuit.values['c200']
             c_fit_err = (minuit.merrors['c200'].upper - minuit.merrors['c200'].lower)/2
-            #c_fit_err = minuit.errors['c200']
         else: 
             c_fit = self.c200c(logm_fit)
             c_fit_err = 0
         return logm_fit, logm_fit_err, c_fit, c_fit_err, chi2_val
     
     def fit_with_mcmc(self, lnL_fit, logm_min, logm_max, c_min, c_max):
-        
+        r"""
+        fit cluster mass and concentration with mcmc
+        Attributes:
+        -----------
+        lnL_fit: fct
+            likelihood to be used
+        logm_min, logm_max: float, float
+            min and max logm
+        c_min, c_max: float, float
+            min and max cocnentration
+        Returns:
+        --------
+        logm_fit, logm_fit_err: float, float
+            best fit logmass and error
+        c_fit, c_fit_err: float, float
+            best fit concentration and error
+        chi2_val: float
+            chi2/ndof value
+        flat_samples: array
+            mcmc chains
+        """
         nwalkers = 100
         nstep = 200
         pos_logm = np.random.randn(nwalkers) * 0.1 + 14
@@ -280,6 +307,10 @@ class HaloMass_fromStackedProfile():
         r"""fit the halo mass (and concentration given a method)
         Attributes:
         -----------
+        logm_min, logm_max: float, float
+            min and max logm
+        c_min, c_max: float, float
+            min and max cocnentration
         method: str
             method to be used
         Returns:
@@ -316,6 +347,7 @@ class HaloMass_fromStackedProfile():
 def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagonal = True,
                         a = None, b = None, rmax = None, 
                         two_halo_term = False, fix_c = False,halo_model = 'nfw', mc_relation='Diemer15', method='minuit'):
+    r"""fit WL mass from a list of shear profiles and covariance"""
     fit_data_name = ['mask','chi2ndof', 'logm200_w','logm200_w_err', 
                      'c_w', 'c_w_err','1h_term', '2h_term','radius_model', 'chain']
     data_to_save = fit_data_name + profile.colnames
