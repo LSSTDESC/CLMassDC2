@@ -29,9 +29,6 @@ concBhattacharya13 = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=de
 #ccl halo bias
 definition = ccl.halos.massdef.MassDef(200, 'matter', c_m_relation=None)
 halobias = ccl.halos.hbias.HaloBiasTinker10(cosmo_ccl, mass_def=definition, mass_def_strict=True)
-
-#ccl power spectrum
-kk = np.logspace(-5,5 ,100000)
   
 class HaloMass_fromStackedProfile():
     r"""a class for the estimation of weak lensing mass from shear profile"""
@@ -55,7 +52,7 @@ class HaloMass_fromStackedProfile():
         -----------
         halo_model: str
             halo model
-        use_cM_relation: Boll
+        use_cM_relation: Boolean
             use a cM relation or not
         cM_relation: str
             c-M relation to be used
@@ -81,9 +78,10 @@ class HaloMass_fromStackedProfile():
         if self.use_two_halo_term==False:
             self.ds_nobias=None
         else: 
-            Pk = ccl.linear_matter_power(cosmo_ccl, kk, 1/(1+self.cluster_z))
-            self.ds_nobias = twoh.ds_two_halo_term_unbaised(self.R, self.cluster_z, cosmo_ccl, kk, Pk)
+            #clmm
+            self.ds_nobias = self.moo.eval_excess_surface_density_2h(self.R, self.cluster_z, halobias=1)
             logm_array = np.linspace(11, 17, 200)
+            #ccl
             halobias_array = halobias.get_halo_bias(cosmo_ccl, 10**logm_array, 
                                                     1./(1.+ self.cluster_z), 
                                                     mdef_other = definition)
@@ -129,7 +127,7 @@ class HaloMass_fromStackedProfile():
         c200c: float
             cluster concentration in 200c convention
         z: float
-            cluster redshift
+            cluster redshiftP
         Returns:
         --------
         m200m: folat
@@ -137,10 +135,7 @@ class HaloMass_fromStackedProfile():
         c200m: folat
             cluster concentration in 200m convention
         """
-        m200m, c200m = utils.M200_to_M200_nfw(M200 = m200c, c200 = c200c, 
-                                                    cluster_z = z, 
-                                                    initial = 'critical', final = 'mean', 
-                                                    cosmo_astropy = cosmo_astropy)
+        m200m, c200m=utils.M_to_M_nfw(m200c, c200c, 200, self.cluster_z, 'critical', 200, 'mean', cosmo_astropy)
         return m200m, c200m
 
     def c200c_model(self, name='Diemer15'):
@@ -343,6 +338,7 @@ class HaloMass_fromStackedProfile():
         dat_to_save =  [self.mask_R, chi2_val, logm_fit, logm_fit_err, c_fit, c_fit_err, 
                   ds_1h_term, ds_2h_term, self.R, chain]
         return dat_to_save
+    
 
 def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagonal = True,
                         a = None, b = None, rmax = None, 
@@ -354,13 +350,16 @@ def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagona
     fit_data_name_tot = data_to_save
     tab = {name : [] for name in fit_data_name_tot}
     print('fitting...')
-    for k, p in enumerate(profile):    
-        cluster_z = p['z_mean']
+    for k, p in enumerate(profile):
+        cluster_z=p['z_mean']
         radius = p['radius']
         cov = covariance[k]['cov_t']
         gt = p['gt']
         Halo = HaloMass_fromStackedProfile(cluster_z, radius, gt, cov)
-        Halo.set_halo_model(halo_model = halo_model, use_cM_relation = fix_c, cM_relation = mc_relation, use_two_halo_term = two_halo_term)
+        Halo.set_halo_model(halo_model = halo_model, 
+                            use_cM_relation = fix_c, 
+                            cM_relation = mc_relation, 
+                            use_two_halo_term = two_halo_term)
         Halo.set_radial_range(a, b, rmax)
         Halo.is_covariance_diagonal(is_covariance_diagonal)
         logm_min, logm_max, c_min, c_max = 11, 17, .01, 20

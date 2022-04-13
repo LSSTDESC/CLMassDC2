@@ -8,7 +8,7 @@ import numpy as np
 import random
 import DC2_tract_coordinates as c
 import lens_data as run
-import extract_in_cosmodc2 as extract_utils
+import extract_bckgd_sources_in_cosmodc2 as extract_utils
 import convert_shapes as shape
 
 def combinatory(X):

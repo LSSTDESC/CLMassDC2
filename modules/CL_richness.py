@@ -2,6 +2,21 @@ import numpy as np
 from astropy.cosmology import FlatLambdaCDM
 
 def mu_loglambda_logM_f(redshift, logm, z0, m0, loglambda0, A_z_mu, A_logm_mu):
+    r"""
+    redshift: flaot
+        cluster redshift
+    logm: float
+        cluster mass log10
+    z0: float
+        pivot redshift
+    m0: float
+        pivot mass
+    loglambda0: float
+        
+    A_z_mu: float
+    A_logm_mu: float
+    
+    """
     return loglambda0 + A_z_mu * np.log10((1+redshift)/(1 + z0)) + A_logm_mu * (logm-np.log10(m0))
 
 def sigma_loglambda_logm_f(redshift, logm, z0, m0, sigma_lambda0, A_z_sigma, A_logm_sigma):

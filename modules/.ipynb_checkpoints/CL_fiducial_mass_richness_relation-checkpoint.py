@@ -21,10 +21,6 @@ dat_RM = load('/pbs/throng/lsst/users/cpayerne/ThesisAtCCin2p3/Galaxy_Cluster_Ca
 dat_cosmodc2 = load('/pbs/throng/lsst/users/cpayerne/ThesisAtCCin2p3/Galaxy_Cluster_Catalogs_details/cosmoDC2/SkySim5000_DM_halos.pkl')
 dat_cosmodc2['M200c'] = dat_cosmodc2['baseDC2/sod_halo_mass']/0.71
 
-
-def lnL_validation(theta, binned_m200c, binned_m200c_err, logrichness_individual, z_individual):
-    return mass_richness.lnL_validation_binned(theta, binned_m200c, binned_m200c_err, logrichness_individual, z_individual, analysis.z0, analysis.richness0)
-
 def constrain_fiducial(used_cluster_id_list = None, low_M_cut = 1e13):
 
     dat_cosmodc2_cut = dat_cosmodc2[dat_cosmodc2['M200c'] > low_M_cut]
@@ -45,7 +41,13 @@ def constrain_fiducial(used_cluster_id_list = None, low_M_cut = 1e13):
     initial_binned = [14.15,0,0.75]
     pos_binned = initial_binned + 0.01 * np.random.randn(npath, len(initial_binned))
     nwalkers, ndim = pos_binned.shape
-    sampler_binned_true = emcee.EnsembleSampler(nwalkers, ndim, lnL_validation, args = (m200c_mean_val, m200c_err_mean_val, logrichness_individual_val, z_individual_val))
+
+    sampler_binned_true = emcee.EnsembleSampler(nwalkers, ndim, mass_richness.lnL_validation_binned, args = (m200c_mean_val, 
+                                                                                                             m200c_err_mean_val, 
+                                                                                                             logrichness_individual_val, 
+                                                                                                             z_individual_val, 
+                                                                                                             analysis.z0, 
+                                                                                                             analysis.richness0))
     sampler_binned_true.run_mcmc(pos_binned, nwalkers, progress=True)
     flat_sampler_binned_true = sampler_binned_true.get_chain(discard=90, flat=True)
     return np.mean(flat_sampler_binned_true, axis = 0)

@@ -72,14 +72,6 @@ def stacked_profile(profile = None,r_in = '1',gt_in = '1', gx_in = '1',
                 data[name].append(array[i])
     data = Table(data)
     return data
-
-
-def stacked_profile_clmm(profile = None,r_in = '1',gt_in = '1', gx_in = '1',
-                    r_out = '1',gt_out = '1', gx_out = '1',
-                    weight = '1',
-                    z_name = '1', z_err = '1',
-                    obs_name = '1', obs_err = '1',
-                    Z_bin = 1, Obs_bin = 1, add_columns_to_bin = []):
     
 
 def bootstrap_covariance(profile = 1,

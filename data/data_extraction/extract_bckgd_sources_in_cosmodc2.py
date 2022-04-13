@@ -117,7 +117,6 @@ def extract_photoz(id_gal, healpix=None, GCRcatalog=None):
         tab_astropy['photoz_mean'] =  tab['photoz_mean']
         tab_astropy['photoz_mode'] = tab['photoz_mode']
         tab_astropy['photoz_odds'] = tab['photoz_odds']
-        del tab
         mask_id=np.isin(np.array(tab_astropy['galaxy_id']), id_gal)
         tab_astropy=tab_astropy[mask_id]
         if n==0: 
@@ -126,6 +125,7 @@ def extract_photoz(id_gal, healpix=None, GCRcatalog=None):
             tab_=vstack([table_photoz,tab_astropy])
             table_photoz = tab_
     n_gal = len(table_photoz['galaxy_id'])
+    print(table_photoz)
     table_photoz['pzbins'] = np.array([z_bins for i in range(n_gal)])
     table_photoz_ordered = join(table_photoz, Table_id_gal, keys='galaxy_id')
     return table_photoz_ordered
