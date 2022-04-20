@@ -18,7 +18,7 @@ cosmodc2:
 and GCRCatalogs:
 - photoz addons
 """
-def compute_photoz_weights(z_lens, pdf, pzbins, cosmo=None, use_clmm=False):
+def compute_photoz_sigmac(z_lens, pdf, pzbins, cosmo=None, use_clmm=False):
     r"""
     Attributes:
     -----------
@@ -42,21 +42,43 @@ def compute_photoz_weights(z_lens, pdf, pzbins, cosmo=None, use_clmm=False):
     pdf_norm=(pdf.T*(1./norm)).T
     x=np.linspace(0,1,len(pdf_norm))
     if use_clmm==True:
-        w=compute_galaxy_weights(
-                            z_lens, cosmo,z_source = None, 
-                            shape_component1 = x, shape_component2 = x, 
-                            shape_component1_err = None,
-                            shape_component2_err = None, 
-                            pzpdf = pdf_norm, pzbins = pzbins,
-                            use_shape_noise = False, is_deltasigma = True)
-        del pdf_new
-        del norm
-        del pdf_norm
-        return w
+        sigmac_2=compute_galaxy_weights(
+                z_lens, cosmo,z_source = None, 
+                shape_component1 = x, shape_component2 = x, 
+                shape_component1_err = None,
+                shape_component2_err = None, 
+                pzpdf = pdf_norm, pzbins = pzbins,
+                use_shape_noise = False, is_deltasigma = True)
+        return 1./(sigmac_2**.5)
     else:
-        sigmacrit_2 = cosmo.eval_sigma_crit(z_lens, pzbins[0,:])**(-2.)
-        sigmacrit_2_integrand = (pdf_norm*sigmacrit_2.T)
-        return simps(sigmacrit_2_integrand, pzbins[0,:], axis=1)
+        sigmacrit_1 = cosmo.eval_sigma_crit(z_lens, pzbins[0,:])**(-1.)
+        sigmacrit_1_integrand = (pdf_norm*sigmacrit_1.T)
+        return simps(sigmacrit_1_integrand, pzbins[0,:], axis=1)**(-1.)
+    
+def compute_p_background(z_lens, pdf, pzbins, use_clmm=False):
+    r"""
+    Attributes:
+    -----------
+    z_lens: float
+        lens redshift
+    pdf: array
+        photoz distrib
+    pzbins: array
+        z_bin centers
+    Returns:
+    --------
+    p: array
+        probability background
+    """
+    if pdf.shape!=(len(pdf), len(pzbins)):
+        pdf_new=np.zeros([len(pdf), len(pzbins[0])])
+        for i, pdf_ in enumerate(pdf):
+            pdf_new[i,:] = pdf_
+        pdf = pdf_new
+    norm=simps(pdf, pzbins, axis=1)
+    pdf_norm=(pdf.T*(1./norm)).T
+    pdf_norm=pdf_norm[:,pzbins[0,:]>=z_lens]
+    return simps(pdf_norm, pzbins[0,:][pzbins[0,:]>=z_lens], axis=1)
 
 def query(lens_z, lens_distance, ra, dec, rmax = 10):
     r"""
@@ -82,7 +104,7 @@ def query(lens_z, lens_distance, ra, dec, rmax = 10):
     query += "FROM cosmoDC2_v1_1_4_image.data as data "
     query += f"WHERE data.redshift >= {zmin} AND data.redshift < {zmax} "
     query += f"AND scisql_s2PtInCircle(coord_ra, coord_dec, {ra}, {dec}, {theta_max}) = 1 "
-    query += f"AND data.mag_i <= 25 "
+    query += f"AND data.mag_i <= 28 "
     query += ";" 
     return query
 
@@ -125,7 +147,6 @@ def extract_photoz(id_gal, healpix=None, GCRcatalog=None):
             tab_=vstack([table_photoz,tab_astropy])
             table_photoz = tab_
     n_gal = len(table_photoz['galaxy_id'])
-    print(table_photoz)
     table_photoz['pzbins'] = np.array([z_bins for i in range(n_gal)])
     table_photoz_ordered = join(table_photoz, Table_id_gal, keys='galaxy_id')
     return table_photoz_ordered
@@ -170,20 +191,21 @@ def extract(lens_redshift=None,lens_ra=None,lens_dec=None, rmax=5,
         #extract photozs
         dat_photoz = extract_photoz(tab['galaxy_id'], healpix, GCRcatalog=GCRcatalog)
     dat = clmm.GCData(tab)
-    cl = clmm.GalaxyCluster('GalaxyCluster', lens_ra, lens_dec, lens_redshift, dat)  
+    cl = clmm.GalaxyCluster('GalaxyCluster', lens_ra, lens_dec, lens_redshift, dat) 
+    #compute weights "true"
     cl.compute_galaxy_weights(z_source='z', pzpdf=None, pzbins=None,
                                shape_component1='e1', shape_component2='e2',
                                shape_component1_err='e1_err', shape_component2_err='e2_err',
                                use_photoz=False, use_shape_noise=False, use_shape_error=False,
                                weight_name='w_ls_true',cosmo=cosmo,
                                is_deltasigma=True, add=True)
-    cl.galcat['w_ls_true'] = cl.galcat['w_ls_true']
+    #compute photoz weights
     if photoz==True: 
-        w_ls_photoz=compute_photoz_weights(lens_redshift,
+        sigmac_photoz=compute_photoz_sigmac(lens_redshift,
                               dat_photoz['photoz_pdf'],
                               dat_photoz['pzbins'], cosmo=cosmo)
-        cl.galcat['w_ls' + '_' + photoz_label]=w_ls_photoz
+        cl.galcat['sigmac_photoz_' + '_' + photoz_label]=sigmac_photoz
         colname_to_add=['photoz_odds','photoz_mean','photoz_mode']
         for c in colname_to_add:
-            cl.galcat[c + '_' + photoz_label]=dat_photoz[c].data
+            cl.galcat[c+'_'+photoz_label]=dat_photoz[c].data
     return cl
