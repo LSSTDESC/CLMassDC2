@@ -30,7 +30,7 @@ print(f'{analysis.Z_bin[0][0]:.2f} < z < {analysis.Z_bin[0][1]:.2f}')
 print(f'{analysis.Obs_bin[0][0]:.2f} < obs < {analysis.Obs_bin[0][1]:.2f}')
 
 cat = metacat.MetaCatalog(cosmo = analysis.cosmo)
-cat._check_available_catalogs(dc2_infos = analysis.cluster_infos, 
+cat._check_available_catalogs(dc2_infos = analysis.lens_catalog, 
                               redshift_def = analysis.redshift_def, 
                               obs_def = analysis.obs_def,
                               z_bin = analysis.Z_bin[0], 
@@ -91,9 +91,9 @@ for i, halo in enumerate(cat.selected_halo_id):
                                             uncal_e2 = analysis.shape_component2_in,
                                             R_s_out = analysis.selection_response_out, 
                                             s2n_cut = analysis.s2n_cut)
-    data_cluster_infos = [halo, p[analysis.obs_def], p[analysis.redshift_def], analysis.bin_edges]
+    data_lens_infos = [halo, p[analysis.obs_def], p[analysis.redshift_def], analysis.bin_edges]
     data_analysis = [profile[name] for name in col_analysis]
-    data_to_extract = data_cluster_infos + data_analysis 
+    data_to_extract = data_lens_infos + data_analysis 
     for j, name in enumerate(list(extract.keys())):
         extract[name].append(data_to_extract[j])
     if analysis.save == True:
