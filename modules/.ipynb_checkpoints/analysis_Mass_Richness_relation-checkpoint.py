@@ -10,9 +10,9 @@ def load(filename, **kwargs):
 
 redMaPPer_clusters = load('/pbs/throng/lsst/users/cpayerne/ThesisAtCCin2p3/Galaxy_Cluster_Catalogs_details/cosmoDC2/RedMapper_galaxy_clusters.pkl')
 
-z_corner = np.linspace(0.2, 0.7, 6)
+z_corner = np.linspace(0.2, 1, 6)
 Z_bin = binning(z_corner)
-rich_corner = np.logspace(np.log10(20), np.log10(200),4)
+rich_corner = np.logspace(np.log10(20), np.log10(150),5)
 rich_corner[-1] = np.inf
 Obs_bin = binning(rich_corner)
 

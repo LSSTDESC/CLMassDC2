@@ -16,6 +16,7 @@ cosmo_astropy = FlatLambdaCDM(H0=71.0, Om0=0.265, Ob0 = 0.0448)
 import emcee
 
 import CL_WL_miscentering as mis
+import mcmc
 import CL_WL_two_halo_term as twoh
 import CL_WL_mass_conversion as utils
 
@@ -100,7 +101,14 @@ class HaloMass_fromStackedProfile():
             maximum radius
         r"""
         rmin, rmax = max(1,a * self.cluster_z + b) , rmax
-        self.mask_R = (self.R > rmin)*(self.R <= rmax)
+        mask = (self.R > rmin)*(self.R <= rmax)
+        self.mask_R=mask
+        index=np.arange(len(self.R))
+        index_cut=index[mask]
+        self.R = self.R[index_cut]
+        self.ds_obs=self.ds_obs[index_cut]
+        self.cov_ds = np.array([np.array([self.cov_ds[i,j] for i in index_cut]) for j in index_cut])
+        self.inv_cov_ds = np.linalg.inv(self.cov_ds)#np.array([np.array([self.inv_cov_ds[i,j] for i in index_cut]) for j in index_cut])
         
     def is_covariance_diagonal(self, is_covariance_diag):
         r"""
@@ -176,9 +184,10 @@ class HaloMass_fromStackedProfile():
             halobias_val = self.hbias(np.log10(M200m))
             y_predict = y_predict + self.ds_2h_term(halobias_val)
         delta = (y_predict - self.ds_obs)
-        delta_cut = np.array([delta[s] if is_in == True else 0 for s, is_in in enumerate(self.mask_R)])
+        #delta_cut = np.array([delta[s] if is_in == True else 0 for s, is_in in enumerate(self.mask_R)])
+        delta_cut=delta
         if self.is_covariance_diagonal:
-            lnL_val = -.5 * np.sum((delta[self.mask_R]/np.sqrt(self.cov_ds.diagonal()[self.mask_R]))**2)
+            lnL_val = -.5 * np.sum((delta/np.sqrt(self.cov_ds.diagonal()))**2)
         else: 
             lnL_val = -.5 * np.sum( delta_cut * self.inv_cov_ds.dot( delta_cut ) )
         return lnL_val
@@ -213,7 +222,7 @@ class HaloMass_fromStackedProfile():
             minuit.migrad()
             minuit.hesse()
             minuit.minos()
-            chi2_val = minuit.fval/(len(self.mask_R[self.mask_R == True]) - 2)
+            chi2_val = minuit.fval/(len(self.R) - 2)
         else: 
             def chi2(logm200): return -2 * lnL_fit(logm200)
             minuit = Minuit(chi2, logm200 = 14)
@@ -225,7 +234,7 @@ class HaloMass_fromStackedProfile():
             minuit.migrad()
             minuit.hesse()
             minuit.minos()
-            chi2_val = minuit.fval/(len(self.mask_R[self.mask_R == True]) - 1)        
+            chi2_val = minuit.fval/(len(self.R) - 1)        
         
         logm_fit = minuit.values['logm200']
         logm_fit_err = (minuit.merrors['logm200'].upper - minuit.merrors['logm200'].lower)/2
@@ -287,12 +296,11 @@ class HaloMass_fromStackedProfile():
                 return lnL_fit(logm200, c200)
             pos = np.array([pos_logm, pos_c]).T
             ndim = 2
-            
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, lnL_fit_mcmc)
-        sampler.run_mcmc(pos, nstep, progress=False);
-        flat_samples = sampler.get_chain(discard=1, thin=3, flat=True)
-        mean = np.mean(flat_samples, axis = 0)
-        err = np.std(flat_samples, axis = 0)
+        
+        flat_samples = mcmc.constraint_mcmc(lnL_fit_mcmc, None, theta0=[14,4], npath=200, nwalkers=100)
+        #mean = np.mean(flat_samples[], axis = 0)
+        #err = np.std(flat_samples, axis = 0)
+        mean, err = mcmc.param_from_chain(flat_samples, n_cut=0)
         if self.use_cM_relation == True:
             return mean[0], err[0], self.c200c(mean), 0, 1
         else:
@@ -339,6 +347,15 @@ class HaloMass_fromStackedProfile():
                   ds_1h_term, ds_2h_term, self.R, chain]
         return dat_to_save
     
+def param_from_chain(chains, n_cut=20):
+    
+    mean, err = [], []
+    for chain in chains:
+        mean_i, err_i = mcmc.param_from_chain(chain, n_cut=n_cut)
+        mean.append(mean_i)
+        err.append(err_i)
+    return np.array(mean), np.array(err)
+    
 
 def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagonal = True,
                         a = None, b = None, rmax = None, 
@@ -356,11 +373,11 @@ def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagona
         cov = covariance[k]['cov_t']
         gt = p['gt']
         Halo = HaloMass_fromStackedProfile(cluster_z, radius, gt, cov)
+        Halo.set_radial_range(a, b, rmax)
         Halo.set_halo_model(halo_model = halo_model, 
                             use_cM_relation = fix_c, 
                             cM_relation = mc_relation, 
                             use_two_halo_term = two_halo_term)
-        Halo.set_radial_range(a, b, rmax)
         Halo.is_covariance_diagonal(is_covariance_diagonal)
         logm_min, logm_max, c_min, c_max = 11, 17, .01, 20
         data_fit_WL = Halo.fit(logm_min, logm_max, c_min, c_max, method=method)

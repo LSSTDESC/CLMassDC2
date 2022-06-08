@@ -1,121 +1,167 @@
 import numpy as np
 from scipy.stats import norm
+from scipy.stats import multivariate_normal
 
-def gaussian(x,mu,sigma):
-    r"""
-    Attributes:
-    -----------
-    x: float
-        x value
-    mu: float
-        mean
-    sigma: float
-        dispersion
-    Returns:
-    --------
-        gaussian(x): float
-    """
-    return np.exp(-(x-mu)**2/(2*sigma**2))/np.sqrt(2*np.pi*sigma**2)
 
-def mu_logM_lambda_f(z, logrichness, logM0, alpha, beta, z0, richness0):
+class WL_Mass_Richness():
     r"""
-    z: float
-    richness: float
-    logM0: float
-        normalization
-    alpha: float
-        slope on redshift
-    beta: float
-        slope on richness
-    z0: float
-        pivot redshift
-    richness0: float
-        pivot richness
-    Returns:
-    --------
-    log likelihood
-    """
-    return logM0 + alpha*np.log10((1+z)/(1+z0)) + beta*(logrichness-np.log10(richness0))
+    a class for parametrization of the mass-richness relation, and several likelihoods.
+    r"""
+    def __init__(self, logm=None, logm_err=None, 
+                 richness=None, richness_err=None, 
+                 z=None, z_err=None,
+                 richness_individual=None, 
+                 z_individual=None, 
+                 n_cluster_per_bin=None, weights_individual=None):
+        r"""data"""
+        #stacked
+        self.logm=logm
+        self.logm_err=logm_err
+        self.richness=richness
+        self.richness_err=richness_err
+        self.z=z
+        self.z_err=z_err
+        if n_cluster_per_bin==None:
+            self.n_cluster_per_bin=np.array([len(z) for z in z_individual])
+        else: self.n_cluster_per_bin=n_cluster_per_bin
+        #individual
+        self.richness_individual=richness_individual
+        self.z_individual=z_individual
+        if weights_individual==None:
+            self.weights_individual=None
+        else: self.weights_individual = weights_individual
+    
+    def set_pivot_values(self, z0, richness0):
+        r"""pivot values
+        Attributes:
+        ----------
+        z0: float
+            pivot redshift
+        richness0: float
+            pivot richness
+        """
+        self.z0=z0
+        self.richness0=richness0
+        
+    def gaussian(self, x,mu,sigma):
+        r"""
+        Attributes:
+        -----------
+        x: array
+            x value
+        mu: float
+            mean
+        sigma: float
+            dispersion
+        Returns:
+        --------
+            gaussian: float
+        """
+        return np.exp(-.5*(x-mu)**2/(sigma**2))/np.sqrt(2*np.pi*sigma**2)
 
-def lnL_WL_binned(theta, m200c_mean, m200c_err_mean, richness_mean, z_mean, z0, richness0):
-    r"""
-    Attributes:
-    -----------
-    theta: array
-        free parameters of mass richness relation
-    z0: float
-        pivot redshift
-    richness0: float
-        pivot richness
-    Returns:
-    --------
-    log likelihood
-    """
-    logM0, alpha, beta = theta
-    logm_mean_expected = np.array(mu_logM_lambda_f(z_mean, np.log10(richness_mean), logM0, alpha, beta, z0, richness0))
-    return np.sum(-.5*(np.log10(m200c_mean)-logm_mean_expected)**2/(m200c_err_mean/m200c_mean)**2)
+    def mu_logM_lambda(self, richness, z, thetaMC):
+        r"""
+        z: array
+            redshift
+        richness: array
+            richness
+        thetaMC: array
+            parameters mass-richness relation
+        Returns:
+        --------
+        mu: array
+            mean of mass-richness relation (McClinthock)
+        """
+        logM0, alpha, beta=thetaMC
+        return logM0+alpha*np.log10((1.+z)/(1.+self.z0))+beta*(np.log10(richness)-np.log10(self.richness0))
+    
+    def sigma_mu_logM_lambda(self, richness, z, thetaMC_sigma):
+        r"""
+        Attributes:
+        -----------
+        z: array
+            redshift
+        richness: array
+            richness
+        thetaMC_sigma: array
+            parameters mass-richness relation deviation
+        Returns:
+        --------
+        mu: array
+            std of mass-richness relation (McClinthock)
+        """
+        sigma_logM0, alpha_sigma, beta_sigma=thetaMC_sigma
+        return sigma_logM0+alpha_sigma*np.log10((1.+z)/(1.+self.z0))+beta_sigma*(np.log10(richness)-np.log10(self.richness0))
 
-def lnL_validation_binned(theta, m200c, m200c_rms, logrichness_individual, z_individual, z0, richness0):
-    r"""
-    Attributes:
-    -----------
-    theta: array
-        free parameters of mass richness relation
-    m200c: array
-        mean mass
-    m200c_rms: array
-        error on mean mass
-    logrichness_individual: array
-        individual richness in bins
-    z_individual: array
-        individual redshift in bins
-    z0: float
-        pivot redshift
-    richness0: float
-        pivot richness
-    Returns:
-    --------
-    log likelihood
-    """
-    p = []
-    logM200c0, alpha, beta = theta
-    for i, sample in enumerate(m200c):
-            mu_individual = mu_logM_lambda_f(z_individual[i], logrichness_individual[i], logM200c0, alpha, beta, z0, richness0)
-            mu_excpected = np.log10(np.average(10**mu_individual))
-            err_mu = m200c_rms[i]/(np.log(10)*m200c[i])
-            p.append(gaussian(np.log10(m200c[i]), mu_excpected, err_mu))
-    return np.sum(np.log(np.array(p)))
+    def lnLikelihood_binned_classic(self, thetaMC):
+        r"""
+        Attributes:
+        -----------
+        thetaMC: array
+            free parameters of mass richness relation
+        Returns:
+        --------
+        log likelihood
+        """
+        logm_mean_expected=self.mu_logM_lambda(self.richness, self.z, thetaMC)
+        return np.sum(np.log(self.gaussian(logm_mean_expected,self.logm,self.logm_err)))
+    
+    def lnLikelihood_individual_zrichness(self, thetaMC, Gamma=1):
+        r"""
+        Attributes:
+        -----------
+        thetaMC: array
+            free parameters of mass richness relation
+        Gamma: float
+            slope of excess sufrance density
+        Returns:
+        --------
+        log likelihood
+        """
+        logm_th=[]
+        for i, logm in enumerate(self.logm):
+            logm_ind=self.mu_logM_lambda(self.richness_individual[i], self.z_individual[i], thetaMC)
+            m_G=(10**logm_ind)**Gamma
+            if self.weight_individual==None:
+                m_mean=np.average(m_G, weights=None, axis=0)**(1./Gamma)
+            else: m_mean=np.average(m_G, weights=self.weights_individual[i], axis=0)**(1./Gamma)
+            logm_th.append(np.log10(m_mean)[0])
+        logm_th=np.array(logm_th)
+        return np.sum(np.log(self.gaussian(logm_th,self.logm,self.logm_err)))
 
-def lnL_WL_binned_Gamma(theta, m200c_mean, m200c_err_mean, richness_individual, z_individual, weight_individual, Gamma, z0, richness0):
-    r"""
-    Attributes:
-    -----------
-    theta: array
-        free parameters of mass richness relation
-    m200c_mean: array
-        mean mass
-    m200c_err_mean: array
-        error on mean mass
-    richness_individual: array
-        individual richness in bins
-    z_individual: array
-        individual redshift in bins
-    weight_individual: array
-        average weak lensing weights
-    Gamma: array
-        slope of excess sufrance density
-    z0: float
-        pivot redshift
-    richness0: float
-        pivot richness
-    Returns:
-    --------
-    log likelihood
-    """
-    p = []
-    logM200c0, alpha, beta = theta
-    for i, sample in enumerate(m200c_mean):
-            logm_individual = mu_logM_lambda_f(z_individual[i], np.log10(richness_individual[i]), logM200c0, alpha, beta, z0, richness0)
-            logm_excpected = np.log10(np.average((10**logm_individual)**Gamma, weights = weight_individual[i], axis = 0)**(1/Gamma))
-            p.append(norm.pdf(np.log10(m200c_mean[i]), logm_excpected, m200c_err_mean[i]/(np.log(10)*m200c_mean[i])))
-    return np.sum(np.log(np.array(p)))
+    def lnLikelihood_binned_intrinsic_scatter(self,theta):
+        r"""
+        Attributes:
+        -----------
+        theta: array
+            parameters of mu_logM_lambda + sigma_mu_logM_lambda
+        Returns:
+        --------
+        log likelihood
+        """
+        logM0, alpha, beta, varlogM_int=theta
+        if varlogM_int < 0: return -np.inf
+        thetaMC=logM0, alpha, beta
+        logm_mean_expected=self.mu_logM_lambda(self.richness, self.z, thetaMC)
+        #var = var_WL + var_int (quadratic sum)
+        var_logm = self.logm_err**2 + varlogM_int/self.n_cluster_per_bin
+        return np.sum(np.log(self.gaussian(logm_mean_expected, self.logm, np.sqrt(var_logm))))
+    
+    def lnLikelihood_individual_masses(self,  logm, richness, z, theta):
+        r"""
+        likelihood for individual masses, richnesses, and redshifts
+        Attributes:
+        -----------
+        theta: array
+            parameters of mu_logM_lambda + sigma_mu_logM_lambda
+        Returns:
+        --------
+        lnL: float
+            log-likelihood
+        """
+        logM0, alpha, beta, sigma_logM0, alpha_sigma, beta_sigma=theta
+        thetaMC=logM0, alpha, beta
+        thetaMC_sigma=sigma_logM0, alpha_sigma, beta_sigma
+        mu=self.mu_logM_lambda(richness, z, thetaMC)
+        sigma=self.sigma_mu_logM_lambda(richness, z, thetaMC_sigma)
+        return np.sum(np.log(self.gaussian(mu, logm, sigma)))

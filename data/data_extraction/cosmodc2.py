@@ -9,6 +9,7 @@ from scipy.integrate import simps
 from clmm.galaxycluster import GalaxyCluster
 from clmm.dataops import compute_galaxy_weights
 from clmm import Cosmology
+import utils
 
 r"""
 extract background galaxy catalog with qserv for:
@@ -18,99 +19,10 @@ cosmodc2:
 and GCRCatalogs:
 - photoz addons
 """
-def compute_photoz_sigmac(z_lens, pdf, pzbins, cosmo=None, use_clmm=False):
-    r"""
-    Attributes:
-    -----------
-    z_lens: float
-        lens redshift
-    pdf: array
-        photoz distrib
-    pzbins: array
-        z_bin centers
-    Returns:
-    --------
-    w_ls_photoz: array
-        photometric weak lensing weights
-    """
-    if pdf.shape!=(len(pdf), len(pzbins)):
-        pdf_new=np.zeros([len(pdf), len(pzbins[0])])
-        for i, pdf_ in enumerate(pdf):
-            pdf_new[i,:] = pdf_
-        pdf = pdf_new
-    norm=simps(pdf, pzbins, axis=1)
-    pdf_norm=(pdf.T*(1./norm)).T
-    x=np.linspace(0,1,len(pdf_norm))
-    if use_clmm==True:
-        sigmac_2=compute_galaxy_weights(
-                z_lens, cosmo,z_source = None, 
-                shape_component1 = x, shape_component2 = x, 
-                shape_component1_err = None,
-                shape_component2_err = None, 
-                pzpdf = pdf_norm, pzbins = pzbins,
-                use_shape_noise = False, is_deltasigma = True)
-        return 1./(sigmac_2**.5)
-    else:
-        sigmacrit_1 = cosmo.eval_sigma_crit(z_lens, pzbins[0,:])**(-1.)
-        sigmacrit_1_integrand = (pdf_norm*sigmacrit_1.T)
-        return simps(sigmacrit_1_integrand, pzbins[0,:], axis=1)**(-1.)
-    
-def compute_p_background(z_lens, pdf, pzbins, use_clmm=False):
-    r"""
-    Attributes:
-    -----------
-    z_lens: float
-        lens redshift
-    pdf: array
-        photoz distrib
-    pzbins: array
-        z_bin centers
-    Returns:
-    --------
-    p: array
-        probability background
-    """
-    if pdf.shape!=(len(pdf), len(pzbins)):
-        pdf_new=np.zeros([len(pdf), len(pzbins[0])])
-        for i, pdf_ in enumerate(pdf):
-            pdf_new[i,:] = pdf_
-        pdf = pdf_new
-    norm=simps(pdf, pzbins, axis=1)
-    pdf_norm=(pdf.T*(1./norm)).T
-    pdf_norm=pdf_norm[:,pzbins[0,:]>=z_lens]
-    return simps(pdf_norm, pzbins[0,:][pzbins[0,:]>=z_lens], axis=1)
-
-def query(lens_z, lens_distance, ra, dec, rmax = 10):
-    r"""
-    Attributes:
-    -----------
-    z: float
-        lens redshift
-    ra: float
-        lens right ascension
-    dec: float
-        lens declinaison
-    rmax: float
-        maximum radius
-    """
-    zmax = 3.
-    zmin = lens_z + .1
-    theta_max = (rmax/lens_distance) * (180./np.pi)
-    query = "SELECT data.coord_ra as ra, data.coord_dec as dec, data.redshift as z, "
-    query += "data.galaxy_id as galaxy_id, "
-    query += "data.mag_i, data.mag_r, data.mag_y, "
-    query += "data.shear_1 as shear1, data.shear_2 as shear2, data.convergence as kappa, "
-    query += "data.ellipticity_1_true as e1_true, data.ellipticity_2_true as e2_true " 
-    query += "FROM cosmoDC2_v1_1_4_image.data as data "
-    query += f"WHERE data.redshift >= {zmin} AND data.redshift < {zmax} "
-    query += f"AND scisql_s2PtInCircle(coord_ra, coord_dec, {ra}, {dec}, {theta_max}) = 1 "
-    query += f"AND data.mag_i <= 28 "
-    query += ";" 
-    return query
 
 def extract_photoz(id_gal, healpix=None, GCRcatalog=None):
     r"""
-    extract background galaxy catalog with GCRcatalog
+    extract background galaxy catalog with GCRcatalog (healpix subdivision)
     Attributes:
     -----------
     id_gal: array
@@ -130,13 +42,13 @@ def extract_photoz(id_gal, healpix=None, GCRcatalog=None):
                        'photoz_odds','redshift','galaxy_id']
     z_bins = GCRcatalog.photoz_pdf_bin_centers
     z_bins[0] = 1e-7
-    for n, hp in enumerate(healpix):
+    for n, hp in enumerate(np.array(healpix)):
         tab = GCRcatalog.get_quantities(quantities_photoz, 
                                         native_filters=['healpix_pixel=='+str(hp)])
         tab_astropy = Table()
-        tab_astropy['galaxy_id'] = tab['galaxy_id']
-        tab_astropy['photoz_pdf'] =  tab['photoz_pdf']
-        tab_astropy['photoz_mean'] =  tab['photoz_mean']
+        tab_astropy['galaxy_id']   = tab['galaxy_id']
+        tab_astropy['photoz_pdf']  = tab['photoz_pdf']
+        tab_astropy['photoz_mean'] = tab['photoz_mean']
         tab_astropy['photoz_mode'] = tab['photoz_mode']
         tab_astropy['photoz_odds'] = tab['photoz_odds']
         mask_id=np.isin(np.array(tab_astropy['galaxy_id']), id_gal)
@@ -146,13 +58,14 @@ def extract_photoz(id_gal, healpix=None, GCRcatalog=None):
         else: 
             tab_=vstack([table_photoz,tab_astropy])
             table_photoz = tab_
+            
     n_gal = len(table_photoz['galaxy_id'])
     table_photoz['pzbins'] = np.array([z_bins for i in range(n_gal)])
     table_photoz_ordered = join(table_photoz, Table_id_gal, keys='galaxy_id')
     return table_photoz_ordered
 
-def extract(lens_redshift=None,lens_ra=None,lens_dec=None, rmax=5, 
-            photoz=None, photoz_label='BPZ', GCRcatalog=None, conn_qserv=None,
+def extract(lens_redshift=None,
+            qserv_query=None, photoz=None, photoz_label='BPZ', GCRcatalog=None, conn_qserv=None,
            cosmo=None):
     r"""
     extract background galaxy catalog
@@ -170,8 +83,7 @@ def extract(lens_redshift=None,lens_ra=None,lens_dec=None, rmax=5,
         background galaxy catalog
     """
     #qserv
-    da=cosmo.eval_da(lens_redshift)
-    query_mysql = query(lens_redshift, da, lens_ra, lens_dec, rmax=rmax)
+    query_mysql = qserv_query
     tab = pd.read_sql_query(query_mysql, conn_qserv)
     try: 
         tab = QTable.from_pandas(tab)
@@ -191,17 +103,17 @@ def extract(lens_redshift=None,lens_ra=None,lens_dec=None, rmax=5,
         #extract photozs
         dat_photoz = extract_photoz(tab['galaxy_id'], healpix, GCRcatalog=GCRcatalog)
     dat = clmm.GCData(tab)
-    cl = clmm.GalaxyCluster('GalaxyCluster', lens_ra, lens_dec, lens_redshift, dat) 
+    cl = clmm.GalaxyCluster('GalaxyCluster', 0, 0, 0, dat) 
     #compute weights "true"
-    cl.compute_galaxy_weights(z_source='z', pzpdf=None, pzbins=None,
-                               shape_component1='e1', shape_component2='e2',
-                               shape_component1_err='e1_err', shape_component2_err='e2_err',
-                               use_photoz=False, use_shape_noise=False, use_shape_error=False,
-                               weight_name='w_ls_true',cosmo=cosmo,
-                               is_deltasigma=True, add=True)
+#     cl.compute_galaxy_weights(z_source='z', pzpdf=None, pzbins=None,
+#                                shape_component1='e1', shape_component2='e2',
+#                                shape_component1_err='e1_err', shape_component2_err='e2_err',
+#                                use_photoz=False, use_shape_noise=False, use_shape_error=False,
+#                                weight_name='w_ls_true',cosmo=cosmo,
+#                                is_deltasigma=True, add=True)
     #compute photoz weights
     if photoz==True: 
-        sigmac_photoz=compute_photoz_sigmac(lens_redshift,
+        sigmac_photoz=utils.compute_photoz_sigmac(lens_redshift,
                               dat_photoz['photoz_pdf'],
                               dat_photoz['pzbins'], cosmo=cosmo)
         cl.galcat['sigmac_photoz_' + '_' + photoz_label]=sigmac_photoz

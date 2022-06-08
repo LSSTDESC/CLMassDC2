@@ -162,14 +162,14 @@ def av_sigma_2(zl, cosmo=None):
     
 def shape_noise_ds(profile = 1,z_name = 'z_mean',r_corner=None, shapenoise=.1, ns_arcmin2=None, cosmo=None):
     
-    def ns_arcmin2(z):
-        dy = 35-10
-        dx=0.9-0.3
-        return (z-0.3) * dy/dx + 35
+    #def ns_arcmin2(z):
+    #    dy = 35-10
+    #    dx=0.9-0.3
+    #    return (z-0.3) * dy/dx + 35
     res=[]
     for p in profile:
         dS_arcmin2 = 3437.75**2*np.pi*np.array([r_corner[i+1]**2 - r_corner[i]**2 for i in range(len(r_corner)-1)])/(cosmo.eval_da(p['z_mean'])**2)
-        Ngal = ns_arcmin2(p['z_mean'])*dS_arcmin2
+        Ngal = dS_arcmin2*ns_arcmin2#ns_arcmin2(p['z_mean'])*dS_arcmin2
         av_s_2 = av_sigma_2(p['z_mean'], cosmo=cosmo)
         res.append(av_s_2*shapenoise**2/(Ngal*p['n_stack']))
     return np.array(res)
@@ -212,8 +212,8 @@ def bootstrap_covariance(profile = 1,
             Xt, Xx = np.stack((gt.astype(float)), axis = 1), np.stack((gx.astype(float)), axis = 1)
             cov_t, cov_x = np.cov(Xt, bias=False), np.cov(Xx)
             array = [z_mean, obs_mean, obs_rms, cov_t, np.linalg.inv(cov_t),
-                     cov_x, gt, gx, np.sqrt(cov_t.diagonal()), np.sqrt(cov_x.diagonal()), Xt]
-            
+                     cov_x, gt, gx, np.sqrt(cov_t.diagonal()), np.sqrt(cov_x.diagonal()), gt]
+            gt, gx=0,0
             for i, name in enumerate(colname):
                 data[name].append(array[i])
                  
