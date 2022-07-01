@@ -1,16 +1,18 @@
 import numpy as np
-import dc2
-import lens_data as lens
+import pickle,sys
+from astropy.table import Table, hstack
+sys.path.append('/pbs/throng/lsst/users/cpayerne/CLMassDC2/data/data_extraction')
+import extract_in_dc2 as dc2
+import photoz_utils as utils
 import matplotlib.pyplot as plt
 import GCRCatalogs
 from GCR import GCRQuery
 import healpy
-import pickle,sys
+import clmm
 from clmm.dataops import compute_galaxy_weights
 from clmm import Cosmology
 from scipy.integrate import simps
 cosmo = Cosmology(H0 = 71.0, Omega_dm0 = 0.265 - 0.0448, Omega_b0 = 0.0448, Omega_k0 = 0.0)
-import utils
 sys.path.append('/pbs/throng/lsst/users/cpayerne/LikelihoodsClusterAbundance/modules/')
 import edit
 
@@ -81,11 +83,21 @@ for n, lens in enumerate(lens_catalog_truncated):
     richness = lens['richness']
     
     #maximum raduis to extract
-    rmax = 15
+    rmax = 1
     
     #extract with GCR
-    cl=dc2.extract(lens_redshift=z, lens_ra=ra, lens_dec=dec, rmax=rmax, cosmo=cosmo, 
+    dat_extract=dc2.extract(lens_redshift=z, lens_ra=ra, lens_dec=dec, rmax=rmax, cosmo=cosmo, 
                GCRcatalog=cat, data_filters=filters(zmin=z + .05), quantities=quantities())
     
-    name = where_to_save + 'not_full_pz_redmapper_cluster_id_' + str(cluster_id) + '.pkl'
-    edit.save_pickle(cl, name)
+    #compute photoz WL quantities
+    pz_quantities = utils.compute_photoz_quantities(z, dat_extract['photoz_pdf'], dat_extract['pzbins'], 
+                                                           n_samples_per_pdf=3, cosmo=cosmo, use_clmm=False)
+    
+    dat_full = hstack([Table(dat_extract), Table(pz_quantities)])
+    dat_full.remove_column('pzbins')
+    dat_full.remove_column('photoz_pdf')
+    cl_full = clmm.GalaxyCluster('dc2_weak_lensing_catalog', ra, dec, z, clmm.GCData(dat_full))
+    
+    name = where_to_save + 'redmapper_cluster_id_' + str(cluster_id) + '.pkl'
+    
+    edit.save_pickle(cl_full, name)

@@ -8,9 +8,8 @@ import numpy as np
 import random
 import DC2_tract_coordinates as c
 import lens_data as run
-import cosmodc2 as extract_utils
 import convert_shapes as shape
-import utils
+import photoz_utils
 
 def combinatory(X):
     dimension = len(X)
@@ -75,21 +74,4 @@ def extract(lens_redshift=None, lens_ra=None, lens_dec=None,
     dat['e_sigma_HSM'] = shape.e_sigma(dat['chi1_HSM'], dat['chi2_HSM'], dat['id'])
     #photoz
     dat['pzbins'] = np.array([z_bins for i, ide in enumerate(dat['id'])])
-    #compute weights
-#     sigmac = utils.compute_photoz_sigmac(lens_redshift, 
-#                                                        dat['photoz_pdf'],
-#                                                        dat['pzbins'], 
-#                                                        cosmo=cosmo, 
-#                                                        use_clmm=False)
-#     sigmacCLMM = utils.compute_photoz_sigmac(lens_redshift, 
-#                                                        dat['photoz_pdf'],
-#                                                        dat['pzbins'], 
-#                                                        cosmo=cosmo, 
-#                                                        use_clmm=True)
-    #dat['sigmac_BPZ']=sigmac/5e15
-    #dat['sigmac_BPZ_CLMM']=sigmacCLMM/5e15
-    cl_full = GalaxyCluster('dc2', lens_ra, lens_dec, lens_redshift, clmm.GCData(dat))
-    cl_full_remove = cl_full.galcat
-    cl_full_remove.remove_column('pzbins')
-    cl_full_remove.remove_column('photoz_pdf')
-    return GalaxyCluster('dc2', lens_ra, lens_dec, lens_redshift, clmm.GCData(cl_full_remove))
+    return dat

@@ -4,12 +4,8 @@ from astropy.table import QTable, Table, vstack, join
 import pickle 
 import pandas as pd
 import clmm
-import healpy
-from scipy.integrate import simps
-from clmm.galaxycluster import GalaxyCluster
-from clmm.dataops import compute_galaxy_weights
-from clmm import Cosmology
-import utils
+sys.path.append('/pbs/throng/lsst/users/cpayerne/CLMassDC2/data/data_extraction')
+import photoz_utils
 
 r"""
 extract background galaxy catalog with qserv for:
@@ -39,7 +35,7 @@ def extract_photoz(id_gal, healpix=None, GCRcatalog=None):
     Table_id_gal = Table()
     Table_id_gal['galaxy_id'] = id_gal
     quantities_photoz=['photoz_pdf','photoz_mean','photoz_mode',
-                       'photoz_odds','redshift','galaxy_id']
+                       'photoz_odds','galaxy_id']
     z_bins = GCRcatalog.photoz_pdf_bin_centers
     z_bins[0] = 1e-7
     for n, hp in enumerate(np.array(healpix)):
@@ -65,7 +61,7 @@ def extract_photoz(id_gal, healpix=None, GCRcatalog=None):
     return table_photoz_ordered
 
 def extract(lens_redshift=None,
-            qserv_query=None, photoz=None, photoz_label='BPZ', GCRcatalog=None, conn_qserv=None,
+            qserv_query=None, GCRcatalog=None, conn_qserv=None,
            cosmo=None):
     r"""
     extract background galaxy catalog
@@ -90,34 +86,11 @@ def extract(lens_redshift=None,
     except: 
         print('no data')
         return None
+    #compute reduced shear and ellipticities
     tab['g1'], tab['g2'] = clmm.utils.convert_shapes_to_epsilon(tab['shear1'],tab['shear2'], 
                                                                 shape_definition = 'shear',
                                                                 kappa = tab['kappa'])
-    tab['e1'], tab['e2'] = clmm.utils.compute_lensed_ellipticity(tab['e1_true'], 
-                                                                 tab['e2_true'], 
-                                                                 tab['shear1'], 
-                                                                 tab['shear2'], 
+    tab['e1'], tab['e2'] = clmm.utils.compute_lensed_ellipticity(tab['e1_true'], tab['e2_true'], 
+                                                                 tab['shear1'], tab['shear2'], 
                                                                  tab['kappa'])
-    if photoz==True:
-        healpix = np.unique(healpy.ang2pix(32, tab['ra'], tab['dec'], nest=False, lonlat=True))
-        #extract photozs
-        dat_photoz = extract_photoz(tab['galaxy_id'], healpix, GCRcatalog=GCRcatalog)
-    dat = clmm.GCData(tab)
-    cl = clmm.GalaxyCluster('GalaxyCluster', 0, 0, 0, dat) 
-    #compute weights "true"
-#     cl.compute_galaxy_weights(z_source='z', pzpdf=None, pzbins=None,
-#                                shape_component1='e1', shape_component2='e2',
-#                                shape_component1_err='e1_err', shape_component2_err='e2_err',
-#                                use_photoz=False, use_shape_noise=False, use_shape_error=False,
-#                                weight_name='w_ls_true',cosmo=cosmo,
-#                                is_deltasigma=True, add=True)
-    #compute photoz weights
-    if photoz==True: 
-        sigmac_photoz=utils.compute_photoz_sigmac(lens_redshift,
-                              dat_photoz['photoz_pdf'],
-                              dat_photoz['pzbins'], cosmo=cosmo)
-        cl.galcat['sigmac_photoz_' + '_' + photoz_label]=sigmac_photoz
-        colname_to_add=['photoz_odds','photoz_mean','photoz_mode']
-        for c in colname_to_add:
-            cl.galcat[c+'_'+photoz_label]=dat_photoz[c].data
-    return cl
+    return tab

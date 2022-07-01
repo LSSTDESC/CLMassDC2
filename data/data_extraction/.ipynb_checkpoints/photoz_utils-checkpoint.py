@@ -2,6 +2,7 @@ import numpy as np
 from astropy.table import Table
 from scipy.integrate import simps
 from clmm.theory import compute_critical_surface_density
+from clmm.dataops import compute_background_probability
 from scipy.integrate import simps
 from scipy.interpolate import interp1d
 
@@ -71,13 +72,10 @@ def draw_z_from_pdf(pdf, pzbins, n_samples=1, use_clmm=False):
     z_sample: array
         redshift samples from pdfs
     """
-        
     n_pdf = len(pdf)
     z_array=pzbins[0]
     z_sample = np.zeros([n_pdf, n_samples])
-    
     for i in range(n_pdf):
-        
         #create cdf from pdf
         cdf = cdf_from_pdf(pdf[i], z_array)
         #create inverse cdf from cdf
@@ -143,13 +141,48 @@ def compute_p_background(z_lens, pdf, pzbins, use_clmm=False):
         pdf = pdf_new
     norm=simps(pdf, pzbins, axis=1)
     pdf_norm=(pdf.T*(1./norm)).T
-    pdf_norm=pdf_norm[:,pzbins[0,:]>=z_lens]
-    return simps(pdf_norm, pzbins[0,:][pzbins[0,:]>=z_lens], axis=1)
+    if use_clmm==False:
+        pdf_norm=pdf_norm[:,pzbins[0,:]>=z_lens]
+        return simps(pdf_norm, pzbins[0,:][pzbins[0,:]>=z_lens], axis=1)
+    else: 
+        return compute_background_probability(z_lens, z_source=None, use_pdz=True, 
+                                              pzpdf=pdf_norm, pzbins=pzbins, validate_input=True)
+
+def compute_photoz_dispersion(pdf, pzbins):
+    r"""
+    Attributes:
+    -----------
+    pdf: array
+        photoz distrib
+    pzbins: array
+        z_bin centers
+    Returns:
+    --------
+    dispersion: array
+        standard deviation of photoz distrib
+    """
+    if pdf.shape!=(len(pdf), len(pzbins)):
+        pdf_new=np.zeros([len(pdf), len(pzbins[0])])
+        for i, pdf_ in enumerate(pdf):
+            pdf_new[i,:] = pdf_
+        pdf = pdf_new
+    norm=simps(pdf, pzbins, axis=1)
+    pdf_norm=(pdf.T*(1./norm)).T
+    #mean
+    pdf_times_z = pdf_norm * pzbins[0,:]
+    mean_z = simps(pdf_times_z, pzbins[0,:], axis=1)
+    #mean2
+    pdf_times_z2 = pdf_norm * pzbins[0,:] ** 2
+    mean_z2 = simps(pdf_times_z2, pzbins[0,:], axis=1)
+    #dispersion
+    return np.sqrt(mean_z2 - mean_z ** 2) 
 
 def compute_photoz_quantities(z_lens, pdf, pzbins, n_samples_per_pdf=3, 
                               cosmo=None, use_clmm=False):
     r"""
+    compute photometric redshift dependant quantities (sigma_c, p_background, sampled redshifts)
     Attributes:
+    -----------
     z_lens: float
         lens redshift
     pdf: array
@@ -163,12 +196,12 @@ def compute_photoz_quantities(z_lens, pdf, pzbins, n_samples_per_pdf=3,
     use_clmm: Bool
         use_clmm or not
     Returns:
+    --------
     data: Table
         photoz_quantities for WL
     """
-    
-    name = ['sigma_c_photoz', 'p_background']
-    name = name + ['sigma_c_photoz_estimate_' + str(k) for k in range(n_samples_per_pdf)]
+    name_base = ['sigma_c_photoz', 'p_background', 'photoz_err']
+    name = name_base + ['sigma_c_photoz_estimate_' + str(k) for k in range(n_samples_per_pdf)]
     name = name + ['z_estimate_' + str(k) for k in range(n_samples_per_pdf)]
     
     #sigma_c full pdf
@@ -176,6 +209,9 @@ def compute_photoz_quantities(z_lens, pdf, pzbins, n_samples_per_pdf=3,
     
     #p_background
     p_background = compute_p_background(z_lens, pdf, pzbins, use_clmm=False)
+    
+    #photoz-err
+    err_photoz = compute_photoz_dispersion(pdf, pzbins)
     
     #sigma_c point estimate
     z_samples = draw_z_from_pdf(pdf, pzbins, n_samples_per_pdf, use_clmm=use_clmm)
@@ -186,10 +222,12 @@ def compute_photoz_quantities(z_lens, pdf, pzbins, n_samples_per_pdf=3,
     data = np.zeros([len(pdf), len(name)])
     data[:,0] = sigma_c
     data[:,1] = p_background
+    data[:,2] = err_photoz
     
+    start = len(name_base) - 1
     for i in range(n_samples_per_pdf): 
-        data[:,1 + i + 1] = sigma_c_estimate[:,i]
-        data[:,1 + n_samples_per_pdf + i + 1] = z_samples[:,i]
+        data[:,start + i + 1] = sigma_c_estimate[:,i]
+        data[:,start + n_samples_per_pdf + i + 1] = z_samples[:,i]
     res = Table(data, names=name)
     return res
     
