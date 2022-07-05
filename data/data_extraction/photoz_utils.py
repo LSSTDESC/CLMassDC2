@@ -86,7 +86,7 @@ def draw_z_from_pdf(pdf, pzbins, n_samples=1, use_clmm=False):
     
     return z_sample
         
-def compute_photoz_sigmac(z_lens, pdf, pzbins, cosmo=None, use_clmm=False):
+def compute_photoz_sigmac(z_lens, pdf_norm, pzbins, cosmo=None, use_clmm=False):
     r"""
     Attributes:
     -----------
@@ -101,14 +101,14 @@ def compute_photoz_sigmac(z_lens, pdf, pzbins, cosmo=None, use_clmm=False):
     sigma_c: array
         photometric weak lensing sigma_c
     """
-    if pdf.shape!=(len(pdf), len(pzbins)):
-        pdf_new=np.zeros([len(pdf), len(pzbins[0])])
-        for i, pdf_ in enumerate(pdf):
-            pdf_new[i,:] = pdf_
-        pdf = pdf_new
-    norm=simps(pdf, pzbins, axis=1)
-    pdf_norm=(pdf.T*(1./norm)).T
-    x=np.linspace(0,0,len(pdf_norm))
+#     if pdf.shape!=(len(pdf), len(pzbins)):
+#         pdf_new=np.zeros([len(pdf), len(pzbins[0])])
+#         for i, pdf_ in enumerate(pdf):
+#             pdf_new[i,:] = pdf_
+#         pdf = pdf_new
+#     norm=simps(pdf, pzbins, axis=1)
+#     pdf_norm=(pdf.T*(1./norm)).T
+#     x=np.linspace(0,0,len(pdf_norm))
     if use_clmm==True:
         sigma_c=compute_critical_surface_density(cosmo, z_lens, 
                                                  z_source=None, use_pdz=True, 
@@ -119,7 +119,7 @@ def compute_photoz_sigmac(z_lens, pdf, pzbins, cosmo=None, use_clmm=False):
         sigmacrit_1_integrand = (pdf_norm*sigmacrit_1.T)
         return simps(sigmacrit_1_integrand, pzbins[0,:], axis=1)**(-1.)
     
-def compute_p_background(z_lens, pdf, pzbins, use_clmm=False):
+def compute_p_background(z_lens, pdf_norm, pzbins, use_clmm=False):
     r"""
     Attributes:
     -----------
@@ -134,13 +134,13 @@ def compute_p_background(z_lens, pdf, pzbins, use_clmm=False):
     p: array
         probability background
     """
-    if pdf.shape!=(len(pdf), len(pzbins)):
-        pdf_new=np.zeros([len(pdf), len(pzbins[0])])
-        for i, pdf_ in enumerate(pdf):
-            pdf_new[i,:] = pdf_
-        pdf = pdf_new
-    norm=simps(pdf, pzbins, axis=1)
-    pdf_norm=(pdf.T*(1./norm)).T
+#     if pdf.shape!=(len(pdf), len(pzbins)):
+#         pdf_new=np.zeros([len(pdf), len(pzbins[0])])
+#         for i, pdf_ in enumerate(pdf):
+#             pdf_new[i,:] = pdf_
+#         pdf = pdf_new
+#     norm=simps(pdf, pzbins, axis=1)
+#     pdf_norm=(pdf.T*(1./norm)).T
     if use_clmm==False:
         pdf_norm=pdf_norm[:,pzbins[0,:]>=z_lens]
         return simps(pdf_norm, pzbins[0,:][pzbins[0,:]>=z_lens], axis=1)
@@ -148,7 +148,7 @@ def compute_p_background(z_lens, pdf, pzbins, use_clmm=False):
         return compute_background_probability(z_lens, z_source=None, use_pdz=True, 
                                               pzpdf=pdf_norm, pzbins=pzbins, validate_input=True)
 
-def compute_photoz_dispersion(pdf, pzbins):
+def compute_photoz_dispersion(pdf_norm, pzbins):
     r"""
     Attributes:
     -----------
@@ -161,13 +161,13 @@ def compute_photoz_dispersion(pdf, pzbins):
     dispersion: array
         standard deviation of photoz distrib
     """
-    if pdf.shape!=(len(pdf), len(pzbins)):
-        pdf_new=np.zeros([len(pdf), len(pzbins[0])])
-        for i, pdf_ in enumerate(pdf):
-            pdf_new[i,:] = pdf_
-        pdf = pdf_new
-    norm=simps(pdf, pzbins, axis=1)
-    pdf_norm=(pdf.T*(1./norm)).T
+#     if pdf.shape!=(len(pdf), len(pzbins)):
+#         pdf_new=np.zeros([len(pdf), len(pzbins[0])])
+#         for i, pdf_ in enumerate(pdf):
+#             pdf_new[i,:] = pdf_
+#         pdf = pdf_new
+#     norm=simps(pdf, pzbins, axis=1)
+#     pdf_norm=(pdf.T*(1./norm)).T
     #mean
     pdf_times_z = pdf_norm * pzbins[0,:]
     mean_z = simps(pdf_times_z, pzbins[0,:], axis=1)
@@ -200,34 +200,43 @@ def compute_photoz_quantities(z_lens, pdf, pzbins, n_samples_per_pdf=3,
     data: Table
         photoz_quantities for WL
     """
-    name_base = ['sigma_c_photoz', 'p_background', 'photoz_err']
-    name = name_base + ['sigma_c_photoz_estimate_' + str(k) for k in range(n_samples_per_pdf)]
-    name = name + ['z_estimate_' + str(k) for k in range(n_samples_per_pdf)]
+    name_base = ['sigma_c_photoz', 'p_background',]# 'photoz_err']
+    name = name_base# + ['sigma_c_photoz_estimate_' + str(k) for k in range(n_samples_per_pdf)]
+    name = name #+ ['z_estimate_' + str(k) for k in range(n_samples_per_pdf)]
+    
+    #compute pdf norm
+    if pdf.shape!=(len(pdf), len(pzbins)):
+        pdf_new=np.zeros([len(pdf), len(pzbins[0])])
+        for i, pdf_ in enumerate(pdf):
+            pdf_new[i,:] = pdf_
+        pdf = pdf_new
+    norm=simps(pdf, pzbins, axis=1)
+    pdf_norm=(pdf.T*(1./norm)).T
     
     #sigma_c full pdf
-    sigma_c = compute_photoz_sigmac(z_lens, pdf, pzbins, cosmo=cosmo, use_clmm=use_clmm)
+    sigma_c = compute_photoz_sigmac(z_lens, pdf_norm, pzbins, cosmo=cosmo, use_clmm=use_clmm)
     
     #p_background
-    p_background = compute_p_background(z_lens, pdf, pzbins, use_clmm=False)
+    p_background = compute_p_background(z_lens, pdf_norm, pzbins, use_clmm=False)
     
     #photoz-err
     err_photoz = compute_photoz_dispersion(pdf, pzbins)
     
     #sigma_c point estimate
-    z_samples = draw_z_from_pdf(pdf, pzbins, n_samples_per_pdf, use_clmm=use_clmm)
-    sigma_c_estimate = np.zeros([len(pdf), n_samples_per_pdf])
-    for i in range(n_samples_per_pdf):
-        sigma_c_estimate[:,i] = cosmo.eval_sigma_crit(z_lens, z_samples[:,i])
+    #z_samples = draw_z_from_pdf(pdf_norm, pzbins, n_samples_per_pdf, use_clmm=use_clmm)
+    #sigma_c_estimate = np.zeros([len(pdf_norm), n_samples_per_pdf])
+    #for i in range(n_samples_per_pdf):
+     #   sigma_c_estimate[:,i] = cosmo.eval_sigma_crit(z_lens, z_samples[:,i])
         
     data = np.zeros([len(pdf), len(name)])
     data[:,0] = sigma_c
     data[:,1] = p_background
-    data[:,2] = err_photoz
+    #data[:,2] = err_photoz
     
-    start = len(name_base) - 1
-    for i in range(n_samples_per_pdf): 
-        data[:,start + i + 1] = sigma_c_estimate[:,i]
-        data[:,start + n_samples_per_pdf + i + 1] = z_samples[:,i]
+   # start = len(name_base) - 1
+   # for i in range(n_samples_per_pdf): 
+   #     data[:,start + i + 1] = sigma_c_estimate[:,i]
+   #     data[:,start + n_samples_per_pdf + i + 1] = z_samples[:,i]
     res = Table(data, names=name)
     return res
     

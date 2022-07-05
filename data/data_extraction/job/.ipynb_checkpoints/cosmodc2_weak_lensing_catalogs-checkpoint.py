@@ -22,7 +22,8 @@ cosmo = Cosmology(H0 = 71.0, Omega_dm0 = 0.265 - 0.0448, Omega_b0 = 0.0448, Omeg
 #connection with qserv
 import mysql
 from mysql.connector import Error
-start, end = int(sys.argv[1]), int(sys.argv[2])
+#start, end = int(sys.argv[1]), int(sys.argv[2])
+start = int(sys.argv[1])
 
 #select galaxy clusters
 lens_catalog_name='/pbs/throng/lsst/users/cpayerne/CLMassDC2/data/lens_catalog_cosmoDC2_v1.1.4_redmapper_v0.8.1.pkl'
@@ -40,8 +41,8 @@ where_to_save='/sps/lsst/users/cpayerne/CLMassDC2/cosmoDC2/redmapper_clusters/'
 #select subsample of clusters redMaPPer#
 mask_select = (lens_catalog['richness'] > 20)*(lens_catalog['redshift'] > .2)
 lens_catalog = lens_catalog[mask_select]
-mask_n=np.arange(start, end)
-lens_catalog_truncated=lens_catalog[mask_n]
+#mask_n=np.arange(start, end)
+lens_catalog_truncated=lens_catalog#[mask_n]
 
 file_already_saved = glob.glob(where_to_save + 'l*')
 cluster_id_saved = []
@@ -49,11 +50,11 @@ for f in file_already_saved:
     cluster_id_saved.append(int(f.split('.pkl')[0].split('halo_')[1]))
 mask_saved = np.isin(lens_catalog_truncated['cluster_id'], cluster_id_saved)
 lens_catalog_truncated = lens_catalog_truncated[np.invert(mask_saved)]
-    
+lens_catalog_truncated = [lens_catalog_truncated[start]]  
 print(len(lens_catalog_truncated))
 print('--')
-print(min(lens_catalog_truncated['richness']))
-print(min(lens_catalog_truncated['redshift']))
+#print(min(lens_catalog_truncated['richness']))
+#print(min(lens_catalog_truncated['redshift']))
 #load source catalogs
 photoz=True
 if photoz == True:
@@ -106,12 +107,12 @@ for n, lens in enumerate(lens_catalog_truncated):
     
     if len(lens_catalog_truncated) == 0: continue
 
-    print('halo index in list' + str(mask_n[n]))
+    #print('halo index in list' + str(mask_n[n]))
     #cluster metadata
     z, ra, dec=lens['redshift'], lens['ra'], lens['dec']
     cluster_id=lens['cluster_id']
     lens_distance=cosmo.eval_da(z)
-    name_cat = 'lensing_catalog_halo_' + str(cluster_id)
+    name_cat = 'lensing_catalog_bfpzsigmac_halo_' + str(cluster_id)
     name_full_cat = where_to_save + name_cat + '.pkl'
     if name_full_cat in glob.glob(where_to_save + '*'):
         print('already saved')
@@ -173,7 +174,7 @@ for n, lens in enumerate(lens_catalog_truncated):
                     #compute WL weights with 
                     pz_quantities_chunk = photoz_utils.compute_photoz_quantities(z, dat_extract_photoz_chunk_truncated['photoz_pdf'], 
                                                                            pzbins_table, n_samples_per_pdf=3, cosmo=cosmo,
-                                                                           use_clmm=True)
+                                                                           use_clmm=False)
                     pz_quantities_chunk['galaxy_id'] = dat_extract_photoz_chunk_truncated['galaxy_id']
                     pz_quantities_chunk['photoz_mean'] = dat_extract_photoz_chunk_truncated['photoz_mean']
                     pz_quantities_chunk['photoz_mode'] = dat_extract_photoz_chunk_truncated['photoz_mode']
