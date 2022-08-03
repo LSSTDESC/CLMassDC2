@@ -159,4 +159,4 @@ for n, lens in enumerate(lens_catalog_truncated):
     try: a = table
     except: continue
      
-    edit.save_pickle(table, where_to_save + name_cat)
+    #edit.save_pickle(table, where_to_save + name_cat)

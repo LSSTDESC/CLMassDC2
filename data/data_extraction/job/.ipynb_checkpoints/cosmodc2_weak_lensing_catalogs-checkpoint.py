@@ -133,7 +133,7 @@ for n, lens in enumerate(lens_catalog_truncated):
         id_gal=dat_extract['galaxy_id']
         ras=dat_extract['ra']
         decs=dat_extract['dec']
-
+        
         #find all different healpix pixels
         healpix = np.unique(healpy.ang2pix(32, ras, decs, nest=False, lonlat=True))
         healpix = healpix[np.isin(healpix, healpix_dc2)]
@@ -194,4 +194,4 @@ for n, lens in enumerate(lens_catalog_truncated):
 
         timef = time.time()
         print(str(timef-timei) + ' (s)')
-    edit.save_pickle(dat_extract, where_to_save + name_cat + '.pkl')
+    #edit.save_pickle(dat_extract, where_to_save + name_cat + '.pkl')

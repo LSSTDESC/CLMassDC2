@@ -194,4 +194,4 @@ for n, lens in enumerate(lens_catalog_truncated):
 
         timef = time.time()
         print(str(timef-timei) + ' (s)')
-    edit.save_pickle(dat_extract, where_to_save + name_cat + '.pkl')
+    #edit.save_pickle(dat_extract, where_to_save + name_cat + '.pkl')
