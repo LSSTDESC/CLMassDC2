@@ -18,19 +18,29 @@ ra_name, dec_name, z_name = 'ra', 'dec', 'redshift'
 obs_name = 'M200c'
 lens_cat = edit.load_pickle(name_lens_cat)
 lens_cat['M200c']=lens_cat['baseDC2/sod_halo_mass']/cosmo['h']
+r200ccom = lens_cat['baseDC2/sod_halo_radius']/cosmo['h']
+lens_cat['r200c'] = r200ccom / (1 + lens_cat['redshift'])
 
 where_bckd_catalog = '/sps/lsst/users/cpayerne/CLMassDC2/cosmoDC2/dm_halos/'
 file = glob.glob(where_bckd_catalog + 'l*')
-bin_edges = clmm.dataops.make_bins(0.5, 10, 15, method='evenlog10width')
+cluster_id_list = [int(name_file.split('.pkl')[0].split('halo_')[1]) for name_file in file]
+lens_cat_reduced = lens_cat[np.isin(lens_cat['halo_id'], cluster_id_list)]
+bin_edges_R = clmm.dataops.make_bins(0.5, 10, 10, method='evenlog10width')
+print(bin_edges_R)
+#print(len(bin_edges_R))
+print(np.mean(lens_cat_reduced['r200c']))
+bin_edges_u = bin_edges_R/np.mean(lens_cat_reduced['r200c'])
+print(bin_edges_u)
 
-names=['id', ra_name, dec_name, z_name, obs_name, 'DSt', 'DSx', 'W_l', 'radius']
+names=['id', ra_name, dec_name, z_name, obs_name, 'r200c', 'DSt', 'DSx', 'W_l', 'radius']
 ind_profile = {n:[] for n in names}
 for i, name_file in enumerate(file):
-    
+    if i%100==0: print(i)
     #cluster infos
     cluster_id = int(name_file.split('.pkl')[0].split('halo_')[1])
     lens = lens_cat[lens_cat['halo_id'] == cluster_id][0]
     ra, dec, z = lens['ra'], lens['dec'], lens['redshift']
+    r200c = lens['r200c']
     obs = lens[obs_name]
     
     #bckgd galaxy catalog
@@ -49,20 +59,23 @@ for i, name_file in enumerate(file):
          use_shape_error = False, shape_component1_err = None, shape_component2_err = None, 
          weight_name = 'w_ls', cosmo = cosmo, is_deltasigma = True, add = True)
 
-    cl.galcat['radius'] = cosmo.eval_da_z1z2(0, z)*cl.galcat['theta']
+    r = cosmo.eval_da_z1z2(0, z)*cl.galcat['theta']
+    ru = r/r200c
+    cl.galcat['theta'] = ru
     
     
     ce = clmm.ClusterEnsemble('id', [])
     
-    p = ce.make_individual_radial_profile(cl, 'Mpc', bins=bin_edges, error_model='ste',
+    p = ce.make_individual_radial_profile(cl, 'radians', bins=bin_edges_R, error_model='ste',
                                        cosmo=cosmo, tan_component_in='et', cross_component_in='ex',
                                        tan_component_out='gt', cross_component_out='gx',
                                        tan_component_in_err=None, cross_component_in_err=None,
                                        weights_in='w_ls', weights_out='W_l')
     data = ce.data[0]
 
-    data_to_save = [cluster_id, ra, dec, z, obs, data['gt'], data['gx'], data['W_l'], data['radius']]
+    data_to_save = [cluster_id, ra, dec, z, obs, r200c,  data['gt'], data['gx'], data['W_l'], data['radius']]
     for s, n in enumerate(names): ind_profile[n].append(data_to_save[s])
-    #if i > 1000: break
+    #if i > 10: break
 
-edit.save_pickle(Table(ind_profile), '/pbs/throng/lsst/users/cpayerne/CLMassDC2/data/data_new_version/ind_profile_dm_halos.pkl')
+edit.save_pickle(Table(ind_profile), '/pbs/throng/lsst/users/cpayerne/CLMassDC2/data/data_new_version/ind_profile_dm_halos_rescaled.pkl')
+print('stop')
