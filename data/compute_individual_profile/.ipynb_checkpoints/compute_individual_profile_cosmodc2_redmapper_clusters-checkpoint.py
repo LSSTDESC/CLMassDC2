@@ -7,8 +7,8 @@ import glob
 import time
 from astropy.table import QTable, Table, vstack, join, hstack
 
-def mask(table):
-    masks = (table['mag_i'] < 24.5)*(table['mag_r'] < 28)
+def mask(table, z_cl):
+    masks = (table['mag_i'] < 24.5)*(table['mag_r'] < 28)*(table['z'] > z_cl + .1)
     return table[masks]
 
 cosmo = clmm.Cosmology(H0 = 71.0, Omega_dm0 = 0.265 - 0.0448, Omega_b0 = 0.0448, Omega_k0 = 0.0)
@@ -19,7 +19,7 @@ obs_name = 'richness'
 lens_cat = edit.load_pickle(name_lens_cat)
 lens_cat_to_extract = lens_cat[(lens_cat['richness'] > 20)*(lens_cat['redshift'] > .2)]
 
-where_bckd_catalog = '/sps/lsst/users/cpayerne/CLMassDC2/cosmoDC2/redmapper_clusters/'
+where_bckd_catalog = '/sps/lsst/users/cpayerne/CLMassDC2/cosmoDC2/redmapper_clusters_new/'
 file = glob.glob(where_bckd_catalog + 'l*')
 cluster_id_saved = []
 for f in file:
@@ -30,7 +30,11 @@ print(len(file))
 
 bin_edges = clmm.dataops.make_bins(0.5, 10, 15, method='evenlog10width')
 
-names=['id', ra_name, dec_name, z_name, obs_name, 'DSt', 'DSx', 'W_l', 'radius']
+label_pz = ['true', 'flex', 'bpz']
+label_prf = ['DSt', 'DSx', 'W_l', 'radius']
+names_cl=['id', ra_name, dec_name, z_name, obs_name]
+label_prf_full = [label_prf_ + '_' + label_pz_ for label_pz_ in label_pz for label_prf_ in label_prf]
+names = names_cl + label_prf_full
 ind_profile = {n:[] for n in names}
 
 for i, name_file in enumerate(file):
@@ -43,35 +47,32 @@ for i, name_file in enumerate(file):
     
     #bckgd galaxy catalog
     table = edit.load_pickle(name_file)
-    table = mask(table)
+    table = mask(table, z)
     #add masks ?
     cl = clmm.galaxycluster.GalaxyCluster('halo', ra, dec, z, clmm.gcdata.GCData(Table(table)))
     theta1, g_t, g_x = cl.compute_tangential_and_cross_components(is_deltasigma=False, cosmo=cosmo)
-    #sigma_c_name = 'sigma_c'
-   # sigma_c = cl.galcat[sigma_c_name]
-    sigma_c = cosmo.eval_sigma_crit(z, cl.galcat['z'])
-    cl.galcat['dst'] = sigma_c*cl.galcat['et']
-    cl.galcat['dsx'] = sigma_c*cl.galcat['ex']
-    #compute weights
-    cl.galcat['w_ls'] = sigma_c**(-2.)
-    #cl.compute_galaxy_weights(use_pdz = False,
-    #     use_shape_noise = False, shape_component1 = 'e1', shape_component2 = 'e2', 
-     #    use_shape_error = False, shape_component1_err = None, shape_component2_err = None, 
-    #     weight_name = 'w_ls', cosmo = cosmo, is_deltasigma = True, add = True)
+    cluster_data = [cluster_id, ra, dec, z, obs]
+    data_prf = []
+    for label in label_pz:
+        
+        if label=='true': sigma_c = cosmo.eval_sigma_crit(z, cl.galcat['z'])
+        elif label=='flex': sigma_c = cl.galcat['sigmac_photoz_flex']
+        elif label=='bpz': sigma_c = cl.galcat['sigmac_photoz_bpz']
 
- #   cl.galcat['radius'] = cosmo.eval_da_z1z2(0, z)*cl.galcat['theta']
+        cl.galcat['dst'] = sigma_c*cl.galcat['et']
+        cl.galcat['dsx'] = sigma_c*cl.galcat['ex']
+        cl.galcat['w_ls'] = sigma_c**(-2.)
+        ce = clmm.ClusterEnsemble('id', [])
 
-    ce = clmm.ClusterEnsemble('id', [])
-    
-    p = ce.make_individual_radial_profile(cl, 'Mpc', bins=bin_edges, error_model='ste',
-                                       cosmo=cosmo, tan_component_in='dst', cross_component_in='dsx',
-                                       tan_component_out='gt', cross_component_out='gx',
-                                       tan_component_in_err=None, cross_component_in_err=None,
-                                       weights_in='w_ls', weights_out='W_l')
-    data = ce.data[0]
-    data_to_save = [cluster_id, ra, dec, z, obs, data['gt'], data['gx'], data['W_l'], data['radius']]
+        p = ce.make_individual_radial_profile(cl, 'Mpc', bins=bin_edges, error_model='ste',
+                                           cosmo=cosmo, tan_component_in='dst', cross_component_in='dsx',
+                                           tan_component_out='gt', cross_component_out='gx',
+                                           tan_component_in_err=None, cross_component_in_err=None,
+                                           weights_in='w_ls', weights_out='W_l')
+        data = ce.data[0]
+        data_prf.extend([data['gt'], data['gx'], data['W_l'], data['radius']])
+    data_to_save = cluster_data + data_prf
     for s, n in enumerate(names): ind_profile[n].append(data_to_save[s])
-    #break
-    #if i > 1000: break
+#break
 
-edit.save_pickle(Table(ind_profile), 'ind_profile_redmapper_true_z.pkl')
+edit.save_pickle(Table(ind_profile), '/pbs/throng/lsst/users/cpayerne/CLMassDC2/data/data_new_version/ind_profile_redmapper.pkl')

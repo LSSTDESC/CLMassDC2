@@ -13,8 +13,8 @@ from clevar.match import ProximityMatch
 from clevar.cosmology import AstroPyCosmology
 from clevar.match import get_matched_pairs
 import CL_DATAOPS_match_catalogs as match
-import CL_Likelihood_for_Mass_richness_relation as mass_richness
-import analysis_Mass_Richness_relation as analysis
+#import CL_Likelihood_for_Mass_richness_relation as mass_richness
+#import analysis_Mass_Richness_relation as analysis
 
 def theta(ra1,dec1, ra2, dec2):
     r"""
@@ -69,13 +69,15 @@ def match_catalog(cat1, cat2, clevar=False, deltaz=.05):
                             distance=cosmo_astropy.angular_diameter_distance(cat1['redshift']))
         cat2_SkyCoord = SkyCoord(ra=cat2['ra']*u.deg, dec=cat2['dec']*u.deg, 
                             distance=cosmo_astropy.angular_diameter_distance(cat2['redshift']))
-   
+        #matching each 1 to 2
         match12 = match1to2(cat1, cat2, cat1_SkyCoord, cat2_SkyCoord, label1='_1', label2='_2',deltaz=deltaz)
+        #matching each 2 to 1
         match21 = match1to2(cat2, cat1, cat2_SkyCoord, cat1_SkyCoord, label1='_2', label2='_1',deltaz=deltaz)
         for name in match12.colnames:
             match12.rename_column(name, name + '_1_as_base')
         for name in match21.colnames:
             match21.rename_column(name, name + '_2_as_base')
+        #rename
         match12['id_to_match']=match12['id_1_1_as_base']
         match21['id_to_match']=match21['id_1_2_as_base']
         #ensure bijective matching

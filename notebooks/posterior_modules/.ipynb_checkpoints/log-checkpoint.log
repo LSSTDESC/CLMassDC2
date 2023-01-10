@@ -1,0 +1,11 @@
+****************************************************************
+*                      SLURM Batch System                      *
+*           IN2P3 Computing Centre, Villeurbanne FR            *
+****************************************************************
+Date: Thu Oct 27 17:31:44 CEST 2022
+Job informations can be found using these commands:
+Accounting:
+sacct -j 17171655
+Efficiency:
+seff 17171655
+****************************************************************

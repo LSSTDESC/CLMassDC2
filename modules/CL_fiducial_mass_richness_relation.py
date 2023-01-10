@@ -13,8 +13,8 @@ from clevar.match import ProximityMatch
 from clevar.cosmology import AstroPyCosmology
 from clevar.match import get_matched_pairs
 import CL_DATAOPS_match_catalogs as match
-import CL_Likelihood_for_Mass_richness_relation as mass_richness
-import analysis_Mass_Richness_relation as analysis
+#import CL_Likelihood_for_Mass_richness_relation as mass_richness
+#import analysis_Mass_Richness_relation as analysis
 
 def theta(ra1,dec1, ra2, dec2):
     r"""

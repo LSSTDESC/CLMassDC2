@@ -1,9 +1,12 @@
 import numpy as np
 from scipy.stats import norm
 from scipy.stats import multivariate_normal
+import pyccl as ccl
+import time
+from astropy.cosmology import FlatLambdaCDM
+import CL_WL_mass_conversion as utils
 
-
-class WL_Mass_Richness():
+class MR_from_Stacked_Masses():
     r"""
     a class for parametrization of the mass-richness relation, and several likelihoods.
     r"""
@@ -12,7 +15,9 @@ class WL_Mass_Richness():
                  z=None, z_err=None,
                  richness_individual=None, 
                  z_individual=None, 
-                 n_cluster_per_bin=None, weights_individual=None):
+                 n_cluster_per_bin=None, 
+                 weights_individual=None,
+                 MRR_object = None):
         r"""data"""
         #stacked
         self.logm=logm
@@ -21,78 +26,11 @@ class WL_Mass_Richness():
         self.richness_err=richness_err
         self.z=z
         self.z_err=z_err
-        if n_cluster_per_bin==None:
-            self.n_cluster_per_bin=np.array([len(z) for z in z_individual])
-        else: self.n_cluster_per_bin=n_cluster_per_bin
-        #individual
+        self.modeling = MRR_object
         self.richness_individual=richness_individual
         self.z_individual=z_individual
-        if weights_individual==None:
-            self.weights_individual=None
-        else: self.weights_individual = weights_individual
+        self.weights_individual = weights_individual
     
-    def set_pivot_values(self, z0, richness0):
-        r"""pivot values
-        Attributes:
-        ----------
-        z0: float
-            pivot redshift
-        richness0: float
-            pivot richness
-        """
-        self.z0=z0
-        self.richness0=richness0
-        
-    def gaussian(self, x,mu,sigma):
-        r"""
-        Attributes:
-        -----------
-        x: array
-            x value
-        mu: float
-            mean
-        sigma: float
-            dispersion
-        Returns:
-        --------
-            gaussian: float
-        """
-        return np.exp(-.5*(x-mu)**2/(sigma**2))/np.sqrt(2*np.pi*sigma**2)
-
-    def mu_logM_lambda(self, richness, z, thetaMC):
-        r"""
-        z: array
-            redshift
-        richness: array
-            richness
-        thetaMC: array
-            parameters mass-richness relation
-        Returns:
-        --------
-        mu: array
-            mean of mass-richness relation (McClinthock)
-        """
-        logM0, alpha, beta=thetaMC
-        return logM0+alpha*np.log10((1.+z)/(1.+self.z0))+beta*(np.log10(richness)-np.log10(self.richness0))
-    
-    def sigma_mu_logM_lambda(self, richness, z, thetaMC_sigma):
-        r"""
-        Attributes:
-        -----------
-        z: array
-            redshift
-        richness: array
-            richness
-        thetaMC_sigma: array
-            parameters mass-richness relation deviation
-        Returns:
-        --------
-        mu: array
-            std of mass-richness relation (McClinthock)
-        """
-        sigma_logM0, alpha_sigma, beta_sigma=thetaMC_sigma
-        return sigma_logM0+alpha_sigma*np.log10((1.+z)/(1.+self.z0))+beta_sigma*(np.log10(richness)-np.log10(self.richness0))
-
     def lnLikelihood_binned_classic(self, thetaMC):
         r"""
         Attributes:
@@ -103,10 +41,10 @@ class WL_Mass_Richness():
         --------
         log likelihood
         """
-        logm_mean_expected=self.mu_logM_lambda(self.richness, self.z, thetaMC)
-        return np.sum(np.log(self.gaussian(logm_mean_expected,self.logm,self.logm_err)))
+        logm_mean_expected=self.modeling.mu_logM_lambda(self.richness, self.z, thetaMC)
+        return np.sum(np.log(self.modeling.gaussian(logm_mean_expected,self.logm,self.logm_err)))
     
-    def lnLikelihood_individual_zrichness(self, thetaMC, Gamma=1):
+    def lnLikelihood_individual_zrichness(self, thetaMC):
         r"""
         Attributes:
         -----------
@@ -119,49 +57,265 @@ class WL_Mass_Richness():
         log likelihood
         """
         logm_th=[]
+        Gamma = self.Gamma
         for i, logm in enumerate(self.logm):
-            logm_ind=self.mu_logM_lambda(self.richness_individual[i], self.z_individual[i], thetaMC)
-            m_G=(10**logm_ind)**Gamma
-            if self.weight_individual==None:
-                m_mean=np.average(m_G, weights=None, axis=0)**(1./Gamma)
-            else: m_mean=np.average(m_G, weights=self.weights_individual[i], axis=0)**(1./Gamma)
-            logm_th.append(np.log10(m_mean)[0])
+            m_ind=10**self.modeling.mu_logM_lambda(self.richness_individual[i], self.z_individual[i], thetaMC)
+            m_G=(m_ind)**Gamma
+            m_mean=np.average(m_G, weights=self.weights_individual[i], axis=0)**(1./Gamma)
+            logm_th.append(np.log10(m_mean))
         logm_th=np.array(logm_th)
-        return np.sum(np.log(self.gaussian(logm_th,self.logm,self.logm_err)))
+        return np.sum(np.log(self.modeling.gaussian(logm_th,self.logm,self.logm_err)))
+    
+cosmo_ccl  = ccl.Cosmology(Omega_c=0.265-0.0448, Omega_b=0.0448, h=0.71, A_s=2.1e-9, n_s=0.96, Neff=0, Omega_g=0)    
+cosmo_astropy = FlatLambdaCDM(H0=71.0, Om0=0.265, Ob0 = 0.0448)
+deff = ccl.halos.massdef.MassDef(200, 'critical', c_m_relation=None)
+concDiemer15 = ccl.halos.concentration.ConcentrationDiemer15(mdef=deff)
+concDuffy08 = ccl.halos.concentration.ConcentrationDuffy08(mdef=deff)
+concPrada12 = ccl.halos.concentration.ConcentrationPrada12(mdef=deff)
+concBhattacharya13 = ccl.halos.concentration.ConcentrationBhattacharya13(mdef=deff)
+definition = ccl.halos.massdef.MassDef(200, 'matter', c_m_relation=None)
+halobias = ccl.halos.hbias.HaloBiasTinker10(cosmo_ccl, mass_def=definition, mass_def_strict=True)
 
-    def lnLikelihood_binned_intrinsic_scatter(self,theta):
+def m200m_c200m_from_logm200c_c200c(m200c, c200c, z):
+    r"""
+    conversion
+    Attributes:
+    -----------
+    m200c: float
+        cluster mass in 200c convention
+    c200c: float
+        cluster concentration in 200c convention
+    z: float
+        cluster redshiftP
+    Returns:
+    --------
+    m200m: folat
+        cluster mass in 200m convention
+    c200m: folat
+        cluster concentration in 200m convention
+    """
+    m200m, c200m=utils.M_to_M_nfw(m200c, c200c, 200, z, 'critical', 200, 'mean', cosmo_astropy)
+    return m200m, c200m
+
+def cM(name):
         r"""
+        mass-concentration relation for nfw profile
         Attributes:
         -----------
-        theta: array
-            parameters of mu_logM_lambda + sigma_mu_logM_lambda
+        name: str
+            name of mass-concentration used
         Returns:
         --------
-        log likelihood
+        cmodel: ccl concentration object
+            selected mass-coencentration relation
         """
-        logM0, alpha, beta, varlogM_int=theta
-        if varlogM_int < 0: return -np.inf
-        thetaMC=logM0, alpha, beta
-        logm_mean_expected=self.mu_logM_lambda(self.richness, self.z, thetaMC)
-        #var = var_WL + var_int (quadratic sum)
-        var_logm = self.logm_err**2 + varlogM_int/self.n_cluster_per_bin
-        return np.sum(np.log(self.gaussian(logm_mean_expected, self.logm, np.sqrt(var_logm))))
+        #mc relation
+        if name == 'Diemer15': cmodel = concDiemer15
+        elif name == 'Duffy08': cmodel = concDuffy08
+        elif name == 'Prada12': cmodel = concPrada12
+        elif name == 'Bhattacharya13': cmodel = concBhattacharya13
+        return cmodel
+
+class MR_from_Stacked_ESD_profiles():
+    r"""
+    a class for parametrization of the mass-richness relation, and several likelihoods.
+    r"""
+    def __init__(self, richness_individual = None, 
+                         z_individual = None, 
+                         weights_per_bin_individual = None,
+                         covariance_stack = None, 
+                         esd_stack = None,
+                         radius_stack = None,
+                         MRR_object = None, esd_modeling = None, cosmo=None):
+
+        self.richness_individual = richness_individual
+        self.z_individual = z_individual
+        self.weights_per_bin_individual = weights_per_bin_individual
+        self.richness_individual = richness_individual
+        self.esd_stack = esd_stack
+        self.radius_stack = radius_stack
+        self.covariance_stack = covariance_stack
+        self.modeling = MRR_object
+        self.esd_modeling = esd_modeling
+        self.cosmo = cosmo
+        
+        return None
     
-    def lnLikelihood_individual_masses(self,  logm, richness, z, theta):
+    def reshape_data(self, r_min=1, r_max =5, is_covariance_diagonal = True):
         r"""
-        likelihood for individual masses, richnesses, and redshifts
+        respahe data (profiles and covariances) after selecting radial range
+        """
+        
+        n_stacks = len(self.esd_stack)
+        inv_L = []
+        esd_stack = []
+        radius_stack = []
+        covariance_stack = []
+        weights = []
+        
+        for i in range(n_stacks):
+            
+            w = self.weights_per_bin_individual[i]
+            n_per_stack = len(self.z_individual[i])
+            index = np.arange(len(self.radius_stack[i]))
+            mask_radius = (self.radius_stack[i] > r_min)*(self.radius_stack[i] < r_max)
+            index_cut = index[mask_radius]
+            esd_stack.append(self.esd_stack[i][mask_radius])
+            radius_stack.append(self.radius_stack[i][mask_radius])
+            w_cut = np.zeros([n_per_stack, len(index_cut)])
+            for h in range(n_per_stack):
+                w_cut[h,:] = w[h,:][mask_radius]
+            weights.append(w_cut)
+            cov_cut = np.array([np.array([self.covariance_stack[i][k,l] for k in index_cut]) for l in index_cut])
+            if is_covariance_diagonal == True:
+                cov_cut = np.diag(cov_cut.diagonal())
+            covariance_stack.append(cov_cut)
+            inv_L.append(np.linalg.inv(np.linalg.cholesky(cov_cut)))
+        
+        self.esd_stack = esd_stack
+        self.radius_stack = radius_stack
+        self.inv_L = inv_L
+        self.covariance_stack = covariance_stack
+        self.weights_per_bin_individual = weights
+        return None
+    
+    def halo_regime(self, two_halo = False, esd_2h_nobias_modeling = None, c_m_relation = 'Duffy08'):
+        
+        if two_halo == True:
+            #precompute the unbiased 2h term for all redshift bins
+            esd_2h_nobias = np.zeros([len(self.esd_stack), len(self.radius_stack[0])])
+            for i in range(len(self.esd_stack)):
+                z_mean = np.mean(self.z_individual[i])
+                esd_2h_nobias[i,:] = esd_2h_nobias_modeling(self.radius_stack[i], z_mean)
+            self.esd_2h_nobias = esd_2h_nobias
+            hbias = []
+            for i in range(len(self.esd_stack)):
+                z_mean = np.mean(self.z_individual[i])
+                logm200c_grid = np.linspace(12, 16.5, 50)
+                c200c_grid = cM(c_m_relation)._concentration(cosmo_ccl, 10**logm200c_grid, 1./(1. + z_mean))
+                m200m = []
+                for k in range(len(logm200c_grid)):
+                    M200m, c200m = m200m_c200m_from_logm200c_c200c(10**logm200c_grid[k], c200c_grid[k], z_mean)
+                    m200m.append(M200m)
+                hb = halobias.get_halo_bias(cosmo_ccl, np.array(m200m), 1./(1.+ z_mean), mdef_other = definition)
+                def halo_bias_interp(log10m200c):
+                    return np.interp(log10m200c, logm200c_grid, hb)
+                hbias.append(halo_bias_interp)
+            self.halobias_modeling = hbias
+            #compute bias function for each redshift
+            
+        
+    def lnLikelihood(self, thetaMC, which = 'full', scatter_lnc = .2, c_m_relation = 'Duffy08', two_halo_term = False):
+        r"""
         Attributes:
-        -----------
-        theta: array
-            parameters of mu_logM_lambda + sigma_mu_logM_lambda
+        ----------
+        thetaMC: array
+            log10M0, G, F, sigma_int
+        which: str
+            which likelihood to use
+        scatter_lnc: float
+            choose the scatter in log(concentration)
+        c_m_relation : str
+            which cM relation to use
         Returns:
         --------
         lnL: float
             log-likelihood
         """
-        logM0, alpha, beta, sigma_logM0, alpha_sigma, beta_sigma=theta
-        thetaMC=logM0, alpha, beta
-        thetaMC_sigma=sigma_logM0, alpha_sigma, beta_sigma
-        mu=self.mu_logM_lambda(richness, z, thetaMC)
-        sigma=self.sigma_mu_logM_lambda(richness, z, thetaMC_sigma)
-        return np.sum(np.log(self.gaussian(mu, logm, sigma)))
+        log10M0, G, F, sigma_int = thetaMC
+        theta_mean = [log10M0, G, F]
+        np.random.seed(989089*int(abs(np.prod(theta_mean))))
+        if which == 'full':
+            #from Simet et al. 2016 https://arxiv.org/abs/1603.06953
+            lnL = 0
+            for i in range(len(self.esd_stack)):
+
+
+                esd_stack_i = self.esd_stack[i]
+                radius_i = self.radius_stack[i]
+
+                n_cluster_in_stack = len(self.richness_individual[i])
+                u1 = np.random.randn(n_cluster_in_stack)
+                u2 = np.random.randn(n_cluster_in_stack)
+
+                ln_mu_m_in_stack = self.modeling.lnM(self.richness_individual[i], self.z_individual[i], theta_mean)
+                sigma_int_corrected = np.sqrt(sigma_int**2 + F**2/(self.richness_individual[i]))
+                mu_ln_m_in_stack = ln_mu_m_in_stack - sigma_int_corrected **2/2
+                
+                #scatter lambda-M
+                lnm_in_stack = mu_ln_m_in_stack + sigma_int_corrected * u1
+                c_mu_in_stack = [cM(c_m_relation)._concentration(cosmo_ccl, np.exp(lnm_in_stack)[s], 
+                                                                1./(1. + self.z_individual[i][s])) for s in range(len(self.z_individual[i]))]
+                #scatter c-M
+                lnc_in_stack = np.log(c_mu_in_stack) + scatter_lnc * u2
+                c_in_stack = np.exp(lnc_in_stack)
+                esd_in_stack = np.zeros([n_cluster_in_stack, len(radius_i)])
+
+                for j in range(n_cluster_in_stack):
+                    
+                    esd_in_stack[j,:] = self.esd_modeling(radius_i, lnm_in_stack[j]/np.log(10), c_in_stack[j], 
+                                                           self.z_individual[i][j], self.cosmo)
+                    if two_halo_term == True:
+                        hbias_ind = self.halobias_modeling[i](lnm_in_stack[j]/np.log(10))
+                        esd_in_stack[j,:] = esd_in_stack[j,:] + hbias_ind * self.esd_2h_nobias[i]
+                esd_stack_th = np.average(esd_in_stack, weights = self.weights_per_bin_individual[i], axis=0)
+
+                delta = esd_stack_i-esd_stack_th
+
+                lnL = lnL -.5*(np.sum((self.inv_L[i].dot(delta))**2))
+
+            return lnL
+        
+        if which == 'simple + no scatter':
+
+            lnL = 0
+            for i in range(len(self.esd_stack)):
+
+                esd_stack_i = self.esd_stack[i]
+                radius_i = self.radius_stack[i]
+                ln_mu_m_in_stack = self.modeling.lnM(np.mean(self.richness_individual[i]), 
+                                                     np.mean(self.z_individual[i]), theta_mean) 
+                mu_m_in_stack = np.exp(ln_mu_m_in_stack)
+                c_mu_in_stack = cM(c_m_relation)._concentration(cosmo_ccl, mu_m_in_stack, 
+                                                                1./(1. + np.mean(self.z_individual[i])))
+                esd_stack_th = self.esd_modeling(np.mean(radius_i, axis=0), np.log10(mu_m_in_stack), 
+                                                 c_mu_in_stack, np.mean(self.z_individual[i]), self.cosmo)
+                #correction factor
+                Gamma = .75
+                sigma_int_corrected = np.sqrt(sigma_int**2 + beta**2/np.mean(self.richness_individual[i]))
+                mu_ln_m_in_stack = ln_mu_m_in_stack - sigma_int_corrected**2/2
+                sigma_m_2 = np.exp(2*mu_ln_m_in_stack + sigma_int_corrected**2)*(np.exp(sigma_int_corrected**2)-1)
+                corr = 1 + .5*Gamma*(Gamma-1)*sigma_m_2/(mu_m_in_stack**2)
+                delta = esd_stack_i-esd_stack_th#*corr
+                lnL = lnL -.5*(np.sum((self.inv_L[i].dot(delta))**2))
+            return lnL
+            
+#         if which == 'simple + scatter':
+#             lnL = 0
+#             for i in range(len(self.esd_stack)):
+#                 u1 = np.random.randn(50)
+#                 u2 = np.random.randn(50)
+#                 esd_stack_i = self.esd_stack[i]
+#                 radius_i = self.radius_stack[i]
+#                 radius_mean_i =np.mean(radius_i, axis=0)
+#                 sigma_int_correct = np.sqrt(sigma_int**2 + beta**2/np.mean(self.richness_individual[i]))
+#                 ln_mu_m_in_stack = self.modeling.lnM(np.mean(self.richness_individual[i]), 
+#                                                      np.mean(self.z_individual[i]), theta_mean) 
+#                 mu_ln_m_in_stack = ln_mu_m_in_stack - sigma_int_correct**2/2
+#                 ln_m_in_stack = mu_ln_m_in_stack + sigma_int_correct * u1
+#                 m_in_stack = np.exp(ln_m_in_stack)
+#                 ln_c_mu_in_stack = np.log(cM(c_m_relation)._concentration(cosmo_ccl, m_in_stack, 
+#                                                                           1./(1. + np.mean(self.z_individual[i]))))
+#                 ln_c_in_stack = ln_c_mu_in_stack + scatter_lnc * u2
+#                 c_in_stack = np.exp(ln_c_in_stack)
+#                 esd_table = np.zeros([len(u1), len(self.radius_stack[i])])
+                                          
+#                 for h in range(len(u1)):
+                    
+#                     esd_table[h,:] = self.esd_modeling(radius_mean_i, np.log10(m_in_stack[h]), 
+#                                                        c_in_stack[h], np.mean(self.z_individual[i]), self.cosmo)
+                
+#                 delta = esd_stack_i-np.mean(esd_table, axis=0)
+#                 lnL = lnL -.5*(np.sum((self.inv_L[i].dot(delta))**2))
+            
+#             return lnL

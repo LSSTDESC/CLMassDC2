@@ -168,9 +168,9 @@ def shape_noise_ds(profile = 1,z_name = 'z_mean',r_corner=None, shapenoise=.1, n
     #    return (z-0.3) * dy/dx + 35
     res=[]
     for p in profile:
-        dS_arcmin2 = 3437.75**2*np.pi*np.array([r_corner[i+1]**2 - r_corner[i]**2 for i in range(len(r_corner)-1)])/(cosmo.eval_da(p['z_mean'])**2)
+        dS_arcmin2 = 3437.75**2*np.pi*np.array([r_corner[i+1]**2 - r_corner[i]**2 for i in range(len(r_corner)-1)])/(cosmo.eval_da(p[z_name])**2)
         Ngal = dS_arcmin2*ns_arcmin2#ns_arcmin2(p['z_mean'])*dS_arcmin2
-        av_s_2 = av_sigma_2(p['z_mean'], cosmo=cosmo)
+        av_s_2 = av_sigma_2(p[z_name], cosmo=cosmo)
         res.append(av_s_2*shapenoise**2/(Ngal*p['n_stack']))
     return np.array(res)
         
@@ -250,7 +250,7 @@ def jacknife_covariance(profile = 1,
             
             condition = condition_z*(profile[obs_name] < obs_bin[1])*(profile[obs_name] > obs_bin[0])
             
-            condition = [c[0] for c in condition]
+            #condition = [c[0] for c in condition]
             
             p = profile[condition]
             
@@ -311,7 +311,7 @@ def sample_covariance(profile = 1,
             
             condition = condition_z*(profile[obs_name] < obs_bin[1])*(profile[obs_name] > obs_bin[0])
             
-            condition = [c[0] for c in condition]
+            #condition = [c[0] for c in condition]
             
             p = profile[condition]
             

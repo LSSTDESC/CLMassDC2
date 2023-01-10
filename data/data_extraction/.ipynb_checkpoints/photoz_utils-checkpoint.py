@@ -54,14 +54,6 @@ def compute_photoz_sigmac(z_lens, pdf_norm, pzbins, cosmo=None, use_clmm=False):
     sigma_c: array
         photometric weak lensing sigma_c
     """
-#     if pdf.shape!=(len(pdf), len(pzbins)):
-#         pdf_new=np.zeros([len(pdf), len(pzbins[0])])
-#         for i, pdf_ in enumerate(pdf):
-#             pdf_new[i,:] = pdf_
-#         pdf = pdf_new
-#     norm=simps(pdf, pzbins, axis=1)
-#     pdf_norm=(pdf.T*(1./norm)).T
-#     x=np.linspace(0,0,len(pdf_norm))
     if use_clmm==True:
         sigma_c=compute_critical_surface_density(cosmo, z_lens, 
                                                  z_source=None, use_pdz=True, 

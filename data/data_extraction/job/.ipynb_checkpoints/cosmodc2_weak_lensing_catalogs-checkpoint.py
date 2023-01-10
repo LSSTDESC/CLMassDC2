@@ -22,8 +22,7 @@ cosmo = Cosmology(H0 = 71.0, Omega_dm0 = 0.265 - 0.0448, Omega_b0 = 0.0448, Omeg
 #connection with qserv
 import mysql
 from mysql.connector import Error
-#start, end = int(sys.argv[1]), int(sys.argv[2])
-start = int(sys.argv[1])
+start, end = int(sys.argv[1]), int(sys.argv[2])
 
 #select galaxy clusters
 lens_catalog_name='/pbs/throng/lsst/users/cpayerne/CLMassDC2/data/lens_catalog_cosmoDC2_v1.1.4_redmapper_v0.8.1.pkl'
@@ -36,7 +35,8 @@ lens_catalog=edit.load_pickle(lens_catalog_name)
 # lens_catalog = lens_catalog[mask]
 # lens_catalog['cluster_id'] = lens_catalog['halo_id']
 
-where_to_save='/sps/lsst/users/cpayerne/CLMassDC2/cosmoDC2/redmapper_clusters/'
+where_to_save='/sps/lsst/users/cpayerne/CLMassDC2/cosmoDC2/redmapper_clusters_new/'
+#where_to_save='/sps/lsst/users/cpayerne/CLMassDC2/cosmoDC2/dm_halos/'
 
 #select subsample of clusters redMaPPer#
 mask_select = (lens_catalog['richness'] > 20)*(lens_catalog['redshift'] > .2)
@@ -44,28 +44,28 @@ lens_catalog = lens_catalog[mask_select]
 #mask_n=np.arange(start, end)
 lens_catalog_truncated=lens_catalog#[mask_n]
 
-file_already_saved = glob.glob(where_to_save + 'l*')
-cluster_id_saved = []
-for f in file_already_saved:
-    cluster_id_saved.append(int(f.split('.pkl')[0].split('halo_')[1]))
-mask_saved = np.isin(lens_catalog_truncated['cluster_id'], cluster_id_saved)
-lens_catalog_truncated = lens_catalog_truncated[np.invert(mask_saved)]
-lens_catalog_truncated = [lens_catalog_truncated[start]]  
+#file_already_saved = glob.glob(where_to_save + 'l*')
+#cluster_id_saved = []
+#for f in file_already_saved:
+#    cluster_id_saved.append(int(f.split('.pkl')[0].split('halo_')[1]))
+#mask_saved = np.isin(lens_catalog_truncated['cluster_id'], cluster_id_saved)
+#lens_catalog_truncated = lens_catalog_truncated[np.invert(mask_saved)]
+lens_catalog_truncated = lens_catalog_truncated[np.arange(start, end)]
 print(len(lens_catalog_truncated))
-print('--')
+print('-----')
 #print(min(lens_catalog_truncated['richness']))
 #print(min(lens_catalog_truncated['redshift']))
 #load source catalogs
 photoz=True
 if photoz == True:
-    gc_flex = "cosmoDC2_v1.1.4_image_with_photozs_flexzboost_v1"
     gc_bpz  = "cosmoDC2_v1.1.4_image_with_photozs_v1"
+    gc_flex = "cosmoDC2_v1.1.4_image_with_photozs_flexzboost_v1"
     #list of healpix in cosmoDC2
     healpix_dc2 = GCRCatalogs.load_catalog("cosmoDC2_v1.1.4_image").get_catalog_info()['healpix_pixels']
     z_bins  = GCRCatalogs.load_catalog(gc_flex).photoz_pdf_bin_centers
     z_bins[0] = 1e-7
-    photoz_label=['_bpz', '_flex']
     photoz_gc=[gc_bpz, gc_flex]
+    photoz_label=['_bpz', '_flex']
 
 def qserv_query(lens_z, lens_distance, ra, dec, rmax = 10):
     r"""
@@ -101,7 +101,7 @@ def qserv_query(lens_z, lens_distance, ra, dec, rmax = 10):
 
 def query_photoz():
     
-    return ['photoz_pdf','photoz_mean','photoz_mode','photoz_odds','galaxy_id']
+    return ['photoz_pdf', 'photoz_mean','photoz_mode','photoz_odds','galaxy_id']
 
 for n, lens in enumerate(lens_catalog_truncated):
     
@@ -112,7 +112,7 @@ for n, lens in enumerate(lens_catalog_truncated):
     z, ra, dec=lens['redshift'], lens['ra'], lens['dec']
     cluster_id=lens['cluster_id']
     lens_distance=cosmo.eval_da(z)
-    name_cat = 'lensing_catalog_bfpzsigmac_halo_' + str(cluster_id)
+    name_cat = 'lensing_catalog_halo_' + str(cluster_id)
     name_full_cat = where_to_save + name_cat + '.pkl'
     if name_full_cat in glob.glob(where_to_save + '*'):
         print('already saved')
@@ -144,11 +144,10 @@ for n, lens in enumerate(lens_catalog_truncated):
         timei = time.time()
         for k, gc_ in enumerate(photoz_gc):
             
-            pz_table = Table(names = ['sigma_c_photoz', 'p_background', 'photoz_err', 
-                                  'sigma_c_photoz_estimate_0', 'sigma_c_photoz_estimate_1', 'sigma_c_photoz_estimate_2', 
+            pz_table = Table(names = ['sigmac_photoz', 'p_background', 'photoz_dispersion', 
+                                  'sigmac_estimate_0', 'sigmac_estimate_1', 'sigmac_estimate_2', 
                                   'z_estimate_0', 'z_estimate_1', 'z_estimate_2', 
-                                  'galaxy_id', 
-                                  'photoz_mean', 'photoz_mode', 'photoz_odds'])
+                                  'galaxy_id', 'photoz_mean', 'photoz_mode', 'photoz_odds'])
             
             photoz_gc_ = GCRCatalogs.load_catalog(gc_)
             for i, hp in enumerate(healpix):
@@ -180,10 +179,7 @@ for n, lens in enumerate(lens_catalog_truncated):
                     pz_quantities_chunk['photoz_mode'] = dat_extract_photoz_chunk_truncated['photoz_mode']
                     pz_quantities_chunk['photoz_odds'] = dat_extract_photoz_chunk_truncated['photoz_odds']
                     pz_table = vstack([pz_table, pz_quantities_chunk])
-                    #print(pz_quantities_chunk.colnames)
-                    #if (i==0) and (j==0): pz_quantities0 = pz_quantities_chunk
-                    #else: pz_quantities0 = vstack([pz_quantities0, pz_quantities_chunk])
-                    
+
             #rename photoz columns
             colnames = pz_table.colnames
             for name in colnames:
@@ -194,4 +190,5 @@ for n, lens in enumerate(lens_catalog_truncated):
 
         timef = time.time()
         print(str(timef-timei) + ' (s)')
-    #edit.save_pickle(dat_extract, where_to_save + name_cat + '.pkl')
+    edit.save_pickle(dat_extract, where_to_save + name_cat + '.pkl')
+    #break

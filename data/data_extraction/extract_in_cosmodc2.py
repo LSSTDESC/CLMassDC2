@@ -4,7 +4,7 @@ from astropy.table import QTable, Table, vstack, join
 import pickle 
 import pandas as pd
 import clmm
-sys.path.append('/pbs/throng/lsst/users/cpayerne/CLMassDC2/data/data_extraction')
+sys.path.append('/pbs/throng/lsst/users/cpayerne/CLMassDC2/data/data_extraction/')
 import photoz_utils
 
 r"""
