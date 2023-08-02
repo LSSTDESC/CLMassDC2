@@ -2,10 +2,12 @@ import numpy as np
 from scipy.stats import norm
 from scipy.stats import multivariate_normal
 import pyccl as ccl
+import CL_Mass_richness_relation as scaling_rel
 import time
+from scipy import interpolate
 from astropy.cosmology import FlatLambdaCDM
 import CL_WL_mass_conversion as utils
-
+import time
 class MR_from_Stacked_Masses():
     r"""
     a class for parametrization of the mass-richness relation, and several likelihoods.
@@ -30,6 +32,7 @@ class MR_from_Stacked_Masses():
         self.richness_individual=richness_individual
         self.z_individual=z_individual
         self.weights_individual = weights_individual
+        self.scaling_rel = MRR_object
     
     def lnLikelihood_binned_classic(self, thetaMC):
         r"""
@@ -41,8 +44,8 @@ class MR_from_Stacked_Masses():
         --------
         log likelihood
         """
-        logm_mean_expected=self.modeling.mu_logM_lambda(self.richness, self.z, thetaMC)
-        return np.sum(np.log(self.modeling.gaussian(logm_mean_expected,self.logm,self.logm_err)))
+        logm_mean_expected=self.scaling_rel.lnM(self.richness, self.z, thetaMC)/np.log(10)
+        return np.sum(np.log(self.scaling_rel.gaussian(logm_mean_expected,self.logm,self.logm_err)))
     
     def lnLikelihood_individual_zrichness(self, thetaMC):
         r"""
@@ -59,7 +62,7 @@ class MR_from_Stacked_Masses():
         logm_th=[]
         Gamma = self.Gamma
         for i, logm in enumerate(self.logm):
-            m_ind=10**self.modeling.mu_logM_lambda(self.richness_individual[i], self.z_individual[i], thetaMC)
+            m_ind=10**self.modeling.lnM(self.richness_individual[i], self.z_individual[i], thetaMC)
             m_G=(m_ind)**Gamma
             m_mean=np.average(m_G, weights=self.weights_individual[i], axis=0)**(1./Gamma)
             logm_th.append(np.log10(m_mean))
@@ -109,11 +112,25 @@ def cM(name):
         cmodel: ccl concentration object
             selected mass-coencentration relation
         """
+        class ConcDuffy08einasto():
+        
+            def __init__(self,):
+                return None
+            
+            def _concentration(self, cosmo_ccl, m, a): 
+                m_pivot = 2 * 1e12
+                A200 = 7.74
+                B200 = - 0.123
+                C200 = - 0.60
+                z = (1/a) - 1
+                return A200 * (m/m_pivot) ** B200 * (1 + z) ** C200
         #mc relation
-        if name == 'Diemer15': cmodel = concDiemer15
+        if   name == 'Diemer15': cmodel = concDiemer15
         elif name == 'Duffy08': cmodel = concDuffy08
         elif name == 'Prada12': cmodel = concPrada12
         elif name == 'Bhattacharya13': cmodel = concBhattacharya13
+        elif name == 'Duffy08Einasto': cmodel = ConcDuffy08einasto()
+                
         return cmodel
 
 class MR_from_Stacked_ESD_profiles():
@@ -204,8 +221,47 @@ class MR_from_Stacked_ESD_profiles():
             self.halobias_modeling = hbias
             #compute bias function for each redshift
             
+    def compute_model(self, cosmo, halo_profile):
+        r""" tabulate model """
+        logm = np.linspace(13, 16, 25)
+        c = np.linspace(1, 10, 20)
+        Logm, C = np.meshgrid(logm, c)
+        list_model_per_stack = []
+        interpolated_model = {}
+        tabulated_model = {}
+        for i in range(len(self.esd_stack)):
+            tabulated_model['stack_'+str(i)] = {}
+            interpolated_model['stack_'+str(i)] = {}
+            excess_suface_density = np.zeros([len(logm), len(c), len(self.radius_stack[i])])
+            z_mean = np.mean(self.z_individual[i])
+            for indexm, logmx in enumerate(logm):
+                for indexc, cx in enumerate(c):
+                    excess_suface_density[indexm,indexc,:] = self.esd_modeling(self.radius_stack[i], logmx, cx, z_mean, cosmo, halo_profile = halo_profile) 
+            
+            for h, R in enumerate(self.radius_stack[i]): 
+                interpolated_model['stack_'+str(i)]['index_R_'+str(h)] = interpolate.interp2d(Logm, C, np.log(excess_suface_density[:,:,h]).T, kind='linear')
+                tabulated_model['stack_'+str(i)]['index_R_'+str(h)] = np.log(excess_suface_density[:,:,h])
         
-    def lnLikelihood(self, thetaMC, which = 'full', scatter_lnc = .2, c_m_relation = 'Duffy08', two_halo_term = False):
+        self.interpolated_model = interpolated_model
+        self.tabulated_model = tabulated_model
+
+    def compute_random_gaussian(self):
+        
+        u1, u2 = [], []
+        
+        for i in range(len(self.esd_stack)):
+                
+            u1.append(np.random.randn(len(self.richness_individual[i])))
+            u2.append(np.random.randn(len(self.richness_individual[i])))
+        self.u1 = u1
+        self.u2 = u2
+                
+        
+        
+                
+    def lnLikelihood(self, thetaMC, which = 'full', scatter_lnc = .2, 
+                     c_m_relation = 'Duffy08', halo_profile = 'nfw', 
+                     two_halo_term = False, interpolation=False):
         r"""
         Attributes:
         ----------
@@ -224,7 +280,10 @@ class MR_from_Stacked_ESD_profiles():
         """
         log10M0, G, F, sigma_int = thetaMC
         theta_mean = [log10M0, G, F]
+        t = str(time.time()).split('.')[1]
+        t = int(t[0])
         np.random.seed(989089*int(abs(np.prod(theta_mean))))
+        esd_th_stack = []
         if which == 'full':
             #from Simet et al. 2016 https://arxiv.org/abs/1603.06953
             lnL = 0
@@ -235,12 +294,15 @@ class MR_from_Stacked_ESD_profiles():
                 radius_i = self.radius_stack[i]
 
                 n_cluster_in_stack = len(self.richness_individual[i])
+                
+                #u1 = self.u1[i]
+                #u2 = self.u2[i]
                 u1 = np.random.randn(n_cluster_in_stack)
                 u2 = np.random.randn(n_cluster_in_stack)
 
                 ln_mu_m_in_stack = self.modeling.lnM(self.richness_individual[i], self.z_individual[i], theta_mean)
                 sigma_int_corrected = np.sqrt(sigma_int**2 + F**2/(self.richness_individual[i]))
-                mu_ln_m_in_stack = ln_mu_m_in_stack - sigma_int_corrected **2/2
+                mu_ln_m_in_stack = ln_mu_m_in_stack - (sigma_int_corrected**2)/2
                 
                 #scatter lambda-M
                 lnm_in_stack = mu_ln_m_in_stack + sigma_int_corrected * u1
@@ -250,45 +312,69 @@ class MR_from_Stacked_ESD_profiles():
                 lnc_in_stack = np.log(c_mu_in_stack) + scatter_lnc * u2
                 c_in_stack = np.exp(lnc_in_stack)
                 esd_in_stack = np.zeros([n_cluster_in_stack, len(radius_i)])
-
+                if interpolation==True:
+                    interpolation_ = self.interpolated_model['stack_'+str(i)]
+                
+                def esd_modeling_interpolation(interpolation, logmx, cx):
+                    
+                    lnds = []
+                    for f in range(len(radius_i)):
+                        lnds.append(interpolation['index_R_'+str(f)](logmx, cx)[0])
+                    return np.exp(np.array(lnds))
+                
                 for j in range(n_cluster_in_stack):
                     
-                    esd_in_stack[j,:] = self.esd_modeling(radius_i, lnm_in_stack[j]/np.log(10), c_in_stack[j], 
-                                                           self.z_individual[i][j], self.cosmo)
+                    if interpolation==False:
+                        esd_in_stack[j,:] = self.esd_modeling(radius_i, lnm_in_stack[j]/np.log(10), c_in_stack[j], 
+                                                               self.z_individual[i][j], self.cosmo, 
+                                                              halo_profile = halo_profile)
+                    elif interpolation==True:
+                        logmx, cx = lnm_in_stack[j]/np.log(10), c_in_stack[j]
+                        ds = esd_modeling_interpolation(interpolation_, logmx, cx)
+                        esd_in_stack[j,:] = ds
+                        
                     if two_halo_term == True:
                         hbias_ind = self.halobias_modeling[i](lnm_in_stack[j]/np.log(10))
                         esd_in_stack[j,:] = esd_in_stack[j,:] + hbias_ind * self.esd_2h_nobias[i]
+                        
                 esd_stack_th = np.average(esd_in_stack, weights = self.weights_per_bin_individual[i], axis=0)
 
                 delta = esd_stack_i-esd_stack_th
 
                 lnL = lnL -.5*(np.sum((self.inv_L[i].dot(delta))**2))
-
+                
+                esd_th_stack.append(esd_stack_th)
+            
+            self.ds = esd_th_stack
+            
+            self.radius = radius_i
+            
             return lnL
         
-        if which == 'simple + no scatter':
+#         if which == 'simple + no scatter':
 
-            lnL = 0
-            for i in range(len(self.esd_stack)):
+#             lnL = 0
+#             for i in range(len(self.esd_stack)):
 
-                esd_stack_i = self.esd_stack[i]
-                radius_i = self.radius_stack[i]
-                ln_mu_m_in_stack = self.modeling.lnM(np.mean(self.richness_individual[i]), 
-                                                     np.mean(self.z_individual[i]), theta_mean) 
-                mu_m_in_stack = np.exp(ln_mu_m_in_stack)
-                c_mu_in_stack = cM(c_m_relation)._concentration(cosmo_ccl, mu_m_in_stack, 
-                                                                1./(1. + np.mean(self.z_individual[i])))
-                esd_stack_th = self.esd_modeling(np.mean(radius_i, axis=0), np.log10(mu_m_in_stack), 
-                                                 c_mu_in_stack, np.mean(self.z_individual[i]), self.cosmo)
-                #correction factor
-                Gamma = .75
-                sigma_int_corrected = np.sqrt(sigma_int**2 + beta**2/np.mean(self.richness_individual[i]))
-                mu_ln_m_in_stack = ln_mu_m_in_stack - sigma_int_corrected**2/2
-                sigma_m_2 = np.exp(2*mu_ln_m_in_stack + sigma_int_corrected**2)*(np.exp(sigma_int_corrected**2)-1)
-                corr = 1 + .5*Gamma*(Gamma-1)*sigma_m_2/(mu_m_in_stack**2)
-                delta = esd_stack_i-esd_stack_th#*corr
-                lnL = lnL -.5*(np.sum((self.inv_L[i].dot(delta))**2))
-            return lnL
+#                 esd_stack_i = self.esd_stack[i]
+#                 radius_i = self.radius_stack[i]
+#                 ln_mu_m_in_stack = self.modeling.lnM(np.mean(self.richness_individual[i]), 
+#                                                      np.mean(self.z_individual[i]), theta_mean) 
+#                 mu_m_in_stack = np.exp(ln_mu_m_in_stack)
+#                 c_mu_in_stack = cM(c_m_relation)._concentration(cosmo_ccl, mu_m_in_stack, 
+#                                                                 1./(1. + np.mean(self.z_individual[i])))
+#                 esd_stack_th = self.esd_modeling(np.mean(radius_i, axis=0), np.log10(mu_m_in_stack), 
+#                                                  c_mu_in_stack, np.mean(self.z_individual[i]), self.cosmo)
+#                 #correction factor
+#                 Gamma = .75
+#                 sigma_int_corrected = np.sqrt(sigma_int**2 + beta**2/np.mean(self.richness_individual[i]))
+#                 mu_ln_m_in_stack = ln_mu_m_in_stack - sigma_int_corrected**2/2
+#                 sigma_m_2 = np.exp(2*mu_ln_m_in_stack + sigma_int_corrected**2)*(np.exp(sigma_int_corrected**2)-1)
+#                 corr = 1 + .5*Gamma*(Gamma-1)*sigma_m_2/(mu_m_in_stack**2)
+#                 delta = esd_stack_i-esd_stack_th#*corr
+#                 lnL = lnL -.5*(np.sum((self.inv_L[i].dot(delta))**2))
+            
+#             return lnL
             
 #         if which == 'simple + scatter':
 #             lnL = 0

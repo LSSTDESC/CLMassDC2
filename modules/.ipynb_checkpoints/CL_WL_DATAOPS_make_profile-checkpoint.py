@@ -131,6 +131,7 @@ def stacked_profile(profile = None,r_in = '1',gt_in = '1', gx_in = '1',
             if condition.shape == (len(profile), 1):
                 condition = [c[0] for c in condition]
             p = profile[condition]
+            print(len(p))
             if len(p) == 0: continue
             obs_mean, obs_rms = np.average(p[obs_name]), np.std(p[obs_name])/np.sqrt(len(p))
             z_mean = np.average(p[z_name])
@@ -240,7 +241,7 @@ def jacknife_covariance(profile = 1,
     dec_corner = np.linspace(dec_min, dec_max, n_jack_dec + 1)
     Ra_bin  = binning(ra_corner)
     Dec_bin  = binning(dec_corner)
-    colname = ['z_mean','obs_mean','obs_rms', 'cov_t','inv_cov_t', 'cov_x', 'gt_boot', 'gx_boot', 'gt_err', 'gx_err', 'Hartlap']
+    colname = ['z_mean','obs_mean','obs_rms', 'cov_t', 'cov_x', 'gt_boot', 'gx_boot', 'gt_err', 'gx_err', 'Hartlap']
     data = {name : [] for name in colname}
     for z_bin in Z_bin:
         
@@ -250,7 +251,7 @@ def jacknife_covariance(profile = 1,
             
             condition = condition_z*(profile[obs_name] < obs_bin[1])*(profile[obs_name] > obs_bin[0])
             
-            #condition = [c[0] for c in condition]
+            condition = [c[0] for c in condition]
             
             p = profile[condition]
             
@@ -280,7 +281,7 @@ def jacknife_covariance(profile = 1,
             cov_t, cov_x = np.cov(Xt, bias = False), np.cov(Xx, bias = False)
             cov_t, cov_x = ((n_jack-1)**2/n_jack)*cov_t, ((n_jack-1)**2/n_jack)*cov_x
             H = (n_jack - cov_t.shape[0] - 2)/(n_jack - 1)
-            array = [z_mean, obs_mean, obs_rms, cov_t, np.linalg.inv(cov_t), 
+            array = [z_mean, obs_mean, obs_rms, cov_t, 
                      cov_x, gt, gx, np.sqrt(cov_t.diagonal()), np.sqrt(cov_x.diagonal()), H]
             
             for i, name in enumerate(colname):
@@ -311,7 +312,7 @@ def sample_covariance(profile = 1,
             
             condition = condition_z*(profile[obs_name] < obs_bin[1])*(profile[obs_name] > obs_bin[0])
             
-            #condition = [c[0] for c in condition]
+            condition = [c[0] for c in condition]
             
             p = profile[condition]
             

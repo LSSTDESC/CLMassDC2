@@ -18,7 +18,7 @@ cosmo_astropy = FlatLambdaCDM(H0=71.0, Om0=0.265, Ob0 = 0.0448)
 import emcee
 from scipy.integrate import quad
 
-import CL_WL_miscentering as mis
+#import CL_WL_miscentering as mis
 import mcmc
 import CL_WL_two_halo_term as twoh
 import CL_WL_mass_conversion as utils

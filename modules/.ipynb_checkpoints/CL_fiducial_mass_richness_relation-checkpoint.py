@@ -8,10 +8,10 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord, match_coordinates_3d, match_coordinates_sky
 from astropy.cosmology import FlatLambdaCDM
 cosmo_astropy = FlatLambdaCDM(H0=71.0, Om0=0.265, Ob0 = 0.0448)
-from clevar.catalog import ClCatalog
-from clevar.match import ProximityMatch
-from clevar.cosmology import AstroPyCosmology
-from clevar.match import get_matched_pairs
+#from clevar.catalog import ClCatalog
+#from clevar.match import ProximityMatch
+#from clevar.cosmology import AstroPyCosmology
+#from clevar.match import get_matched_pairs
 import CL_DATAOPS_match_catalogs as match
 #import CL_Likelihood_for_Mass_richness_relation as mass_richness
 #import analysis_Mass_Richness_relation as analysis

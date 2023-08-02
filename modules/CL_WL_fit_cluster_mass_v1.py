@@ -15,7 +15,7 @@ cosmo_ccl  = ccl.Cosmology(Omega_c=0.265-0.0448, Omega_b=0.0448, h=0.71, A_s=2.1
 cosmo_astropy = FlatLambdaCDM(H0=71.0, Om0=0.265, Ob0 = 0.0448)
 import emcee
 
-import CL_WL_miscentering as mis
+#import CL_WL_miscentering as mis
 import mcmc
 import CL_WL_two_halo_term as twoh
 import CL_WL_mass_conversion as utils
@@ -361,13 +361,14 @@ def fit_WL_cluster_mass(profile = None, covariance = None, is_covariance_diagona
                         a = None, b = None, rmax = None, 
                         two_halo_term = False, fix_c = False,halo_model = 'nfw', mc_relation='Diemer15', method='minuit'):
     r"""fit WL mass from a list of shear profiles and covariance"""
-    fit_data_name = ['mask','chi2ndof', 'logm200_w','logm200_w_err', 
+    fit_data_name = ['mask','chi2ndof', 'log10M200c_WL','err_log10M200c_WL', 
                      'c_w', 'c_w_err','1h_term', '2h_term','radius_model', 'chain']
     data_to_save = fit_data_name + profile.colnames
     fit_data_name_tot = data_to_save
     tab = {name : [] for name in fit_data_name_tot}
     print('fitting...')
     for k, p in enumerate(profile):
+        print(k)
         cluster_z=p['z_mean']
         radius = p['radius']
         cov = covariance[k]['cov_t']
